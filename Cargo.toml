@@ -13,6 +13,7 @@ edition = "2024"
 version = "0.1.0"
 license = "MIT"
 repository = "https://github.com/hesreallyhim/ralph-orchestrator"
+homepage = "https://github.com/hesreallyhim/ralph-orchestrator"
 description = "Ralph Orchestrator - Multi-agent orchestration framework"
 
 [workspace.lints.rust]
@@ -49,9 +50,45 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Testing
+tempfile = "3"
+
 # Internal crates
 ralph-proto = { path = "crates/ralph-proto" }
 ralph-core = { path = "crates/ralph-core" }
 ralph-adapters = { path = "crates/ralph-adapters" }
 ralph-tui = { path = "crates/ralph-tui" }
 ralph-cli = { path = "crates/ralph-cli" }
+
+# Config for 'dist'
+[workspace.metadata.dist]
+# CI backends to support
+ci = "github"
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# The installers to generate for each app
+installers = ["shell", "powershell", "homebrew"]
+# Publish jobs to run in CI (auto-publishes Homebrew formula to tap)
+publish-jobs = ["homebrew"]
+# Homebrew tap repository for formula publishing (owner/repo or owner/repo format)
+tap = "mikeyobrien/homebrew-tap"
+# Extra static files to include in each App (path relative to this Cargo.toml's dir)
+include = ["README.md", "LICENSE"]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.30.3"
+# Allow custom modifications to CI workflow (we add publish-crates job)
+allow-dirty = ["ci"]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Whether to install an updater program
+install-updater = false
+
+# Use GitHub hosted runners for builds
+# aarch64-linux uses cross-compilation from x86_64 runner
+[workspace.metadata.dist.github-custom-runners]
+aarch64-unknown-linux-gnu = "ubuntu-latest"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
