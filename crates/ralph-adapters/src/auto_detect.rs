@@ -178,4 +178,122 @@ mod tests {
         assert_eq!(detection_command("codex"), "codex");
         assert_eq!(detection_command("amp"), "amp");
     }
+
+    #[test]
+    fn test_detect_backend_default_priority_order() {
+        // Test that default priority order is respected when no backends are available
+        // Use non-existent backends to ensure they all fail
+        let fake_priority = &["fake_claude", "fake_kiro", "fake_gemini", "fake_codex", "fake_amp"];
+        let result = detect_backend(fake_priority, |_| true);
+        
+        // Should fail since no backends are actually available, but check the order
+        assert!(result.is_err());
+        if let Err(e) = result {
+            // Should check backends in the specified priority order
+            assert_eq!(e.checked, vec!["fake_claude", "fake_kiro", "fake_gemini", "fake_codex", "fake_amp"]);
+        }
+    }
+
+    #[test]
+    fn test_detect_backend_custom_priority_order() {
+        // Test that custom priority order is honored
+        let custom_priority = &["fake_gemini", "fake_claude", "fake_amp"];
+        let result = detect_backend(custom_priority, |_| true);
+        
+        // Should fail since no backends are actually available, but check the order
+        assert!(result.is_err());
+        if let Err(e) = result {
+            // Should check backends in custom priority order
+            assert_eq!(e.checked, vec!["fake_gemini", "fake_claude", "fake_amp"]);
+        }
+    }
+
+    #[test]
+    fn test_detect_backend_skips_disabled_adapters() {
+        // Test that disabled adapters are skipped even if in priority list
+        let priority = &["fake_claude", "fake_gemini", "fake_kiro", "fake_codex"];
+        let result = detect_backend(priority, |backend| {
+            // Only enable fake_gemini and fake_codex
+            matches!(backend, "fake_gemini" | "fake_codex")
+        });
+        
+        // Should fail since no backends are actually available, but check only enabled ones were checked
+        assert!(result.is_err());
+        if let Err(e) = result {
+            // Should only check enabled backends (fake_gemini, fake_codex), skipping disabled ones (fake_claude, fake_kiro)
+            assert_eq!(e.checked, vec!["fake_gemini", "fake_codex"]);
+        }
+    }
+
+    #[test]
+    fn test_detect_backend_respects_priority_with_mixed_enabled() {
+        // Test priority ordering with some adapters disabled
+        let priority = &["fake_claude", "fake_kiro", "fake_gemini", "fake_codex", "fake_amp"];
+        let result = detect_backend(priority, |backend| {
+            // Disable fake_kiro and fake_codex
+            !matches!(backend, "fake_kiro" | "fake_codex")
+        });
+        
+        // Should fail since no backends are actually available, but check the filtered order
+        assert!(result.is_err());
+        if let Err(e) = result {
+            // Should check in priority order but skip disabled ones
+            assert_eq!(e.checked, vec!["fake_claude", "fake_gemini", "fake_amp"]);
+        }
+    }
+
+    #[test]
+    fn test_detect_backend_empty_priority_list() {
+        // Test behavior with empty priority list
+        let result = detect_backend(&[], |_| true);
+        
+        // Should fail with empty checked list
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.checked.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_detect_backend_all_disabled() {
+        // Test that all disabled adapters results in empty checked list
+        let priority = &["claude", "gemini", "kiro"];
+        let result = detect_backend(priority, |_| false);
+        
+        // Should fail with empty checked list since all are disabled
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.checked.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_detect_backend_finds_first_available() {
+        // Test that the first available backend in priority order is selected
+        // Mix available and unavailable backends to test priority
+        let priority = &["fake_nonexistent1", "fake_nonexistent2", "echo", "fake_nonexistent3"];
+        let result = detect_backend(priority, |_| true);
+        
+        // Should succeed and return "echo" (first available in the priority list)
+        assert!(result.is_ok());
+        if let Ok(backend) = result {
+            assert_eq!(backend, "echo");
+        }
+    }
+
+    #[test]
+    fn test_detect_backend_skips_to_next_available() {
+        // Test that detection continues through priority list until it finds an available backend
+        let priority = &["fake_nonexistent1", "fake_nonexistent2", "echo"];
+        let result = detect_backend(priority, |backend| {
+            // Disable the first fake backend, enable the rest
+            backend != "fake_nonexistent1"
+        });
+        
+        // Should succeed and return "echo" (first enabled and available)
+        assert!(result.is_ok());
+        if let Ok(backend) = result {
+            assert_eq!(backend, "echo");
+        }
+    }
 }
