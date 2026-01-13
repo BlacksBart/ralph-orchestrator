@@ -1,0 +1,206 @@
+# Behavioral Verification Catalog
+#
+# This file catalogs verifiable behaviors for each spec. The gap analysis
+# uses these to verify implementation status via actual runtime behavior
+# rather than code search (which produces false positives).
+#
+# Each behavior has:
+#   - name: Human-readable description
+#   - run: Shell command that exits 0 if behavior is present, non-zero if missing
+#   - type: Category (cli-flag, runtime, config, output)
+#   - skip_ci: (optional) Set true for behaviors that can't run in CI
+#
+# Usage:
+#   - Gap analysis runs each `run` command
+#   - Only behaviors that FAIL are reported as "missing"
+#   - Specs with no behaviors fall back to code search
+#
+# Maintenance:
+#   - Run `/update-behaviors` to regenerate this file from current implementation
+#   - Add new behaviors when implementing new features
+#   - Remove behaviors when deprecating features
+
+interactive-mode:
+  spec: interactive-mode.spec.md
+  behaviors:
+    # CLI Flag Existence
+    - name: "-i/--interactive flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -qE '^\s+-i, --interactive'
+
+    - name: "-a/--autonomous flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -qE '^\s+-a, --autonomous'
+
+    - name: "--idle-timeout flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -q -- '--idle-timeout'
+
+    # Flag Acceptance (parsing works)
+    - name: "-i and -a are mutually exclusive"
+      type: cli-flag
+      run: ralph run -i -a --dry-run 2>&1 | grep -qi 'cannot be used with\|conflict'
+
+    - name: "--idle-timeout accepts numeric value"
+      type: cli-flag
+      run: ralph run --idle-timeout 60 --dry-run 2>&1 | grep -qv 'error\|invalid'
+
+    # Resume command flags
+    - name: "resume command has -i flag"
+      type: cli-flag
+      run: ralph resume --help | grep -qE '^\s+-i, --interactive'
+
+    - name: "resume command has -a flag"
+      type: cli-flag
+      run: ralph resume --help | grep -qE '^\s+-a, --autonomous'
+
+    - name: "resume command has --idle-timeout"
+      type: cli-flag
+      run: ralph resume --help | grep -q -- '--idle-timeout'
+
+event-loop:
+  spec: event-loop.spec.md
+  behaviors:
+    # Core commands exist
+    - name: "run command exists"
+      type: cli-flag
+      run: ralph --help | grep -q 'run.*Run the orchestration loop'
+
+    - name: "resume command exists"
+      type: cli-flag
+      run: ralph --help | grep -q 'resume.*Resume'
+
+    - name: "events command exists"
+      type: cli-flag
+      run: ralph --help | grep -q 'events.*View event history'
+
+    # Run command flags
+    - name: "-p/--prompt flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -qE '^\s+-p, --prompt'
+
+    - name: "--max-iterations flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -q -- '--max-iterations'
+
+    - name: "--completion-promise flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -q -- '--completion-promise'
+
+    - name: "--dry-run flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -q -- '--dry-run'
+
+    - name: "-c/--config flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -qE '^\s+-c, --config'
+
+    - name: "-v/--verbose flag exists"
+      type: cli-flag
+      run: ralph run --help | grep -qE '^\s+-v, --verbose'
+
+    # Events command flags
+    - name: "events --last flag exists"
+      type: cli-flag
+      run: ralph events --help | grep -q -- '--last'
+
+    - name: "events --topic flag exists"
+      type: cli-flag
+      run: ralph events --help | grep -q -- '--topic'
+
+    - name: "events --iteration flag exists"
+      type: cli-flag
+      run: ralph events --help | grep -q -- '--iteration'
+
+    - name: "events --format flag exists"
+      type: cli-flag
+      run: ralph events --help | grep -q -- '--format'
+
+    - name: "events --clear flag exists"
+      type: cli-flag
+      run: ralph events --help | grep -q -- '--clear'
+
+    # Dry-run output
+    - name: "dry-run shows config summary"
+      type: output
+      run: ralph run --dry-run 2>&1 | grep -q 'Backend\|Max iterations'
+
+cli-adapters:
+  spec: cli-adapters.spec.md
+  behaviors:
+    # Backend configuration
+    - name: "dry-run shows backend"
+      type: output
+      run: ralph run --dry-run 2>&1 | grep -q 'Backend:'
+
+    - name: "config file is configurable"
+      type: cli-flag
+      run: ralph run --help | grep -q -- '--config'
+
+feature-parity:
+  spec: feature-parity.spec.md
+  behaviors:
+    # Basic CLI structure
+    - name: "ralph binary runs"
+      type: runtime
+      run: ralph --version >/dev/null 2>&1
+
+    - name: "ralph has version flag"
+      type: cli-flag
+      run: ralph --help | grep -qE '^\s+-V, --version'
+
+    # Subcommand structure matches v1
+    - name: "run is default command"
+      type: cli-flag
+      run: ralph --help | grep -q 'default if no subcommand'
+
+v1-v2-feature-parity:
+  spec: v1-v2-feature-parity.spec.md
+  behaviors:
+    # This spec is about migration, verify key v2 features exist
+    - name: "hats architecture (events command)"
+      type: runtime
+      run: ralph events --help >/dev/null 2>&1
+
+scaffolding:
+  spec: scaffolding.spec.md
+  behaviors:
+    # Project structure
+    - name: "ralph crate exists"
+      type: runtime
+      run: test -d crates/ralph-cli
+
+    - name: "ralph-core crate exists"
+      type: runtime
+      run: test -d crates/ralph-core
+
+    - name: "ralph-proto crate exists"
+      type: runtime
+      run: test -d crates/ralph-proto
+
+homebrew-tap:
+  spec: homebrew-tap.spec.md
+  behaviors:
+    # These are external/deployment behaviors - likely skip in gap analysis
+    - name: "cargo-dist configured"
+      type: config
+      run: test -f .github/workflows/release.yml || test -f dist-workspace.toml
+      skip_ci: true
+
+benchmark-harness:
+  spec: benchmark-harness.spec.md
+  behaviors:
+    # Benchmark infrastructure
+    - name: "benchmark crate exists"
+      type: runtime
+      run: test -d crates/ralph-benchmark || test -d benchmarks
+
+benchmark-ux:
+  spec: benchmark-ux.spec.md
+  behaviors: []
+  # UX behaviors are subjective, handled by LLM-as-judge
+
+benchmark-tasks:
+  spec: benchmark-tasks.spec.md
+  behaviors: []
+  # Task definitions, not runtime behaviors
