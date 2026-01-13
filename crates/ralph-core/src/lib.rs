@@ -8,6 +8,7 @@
 //! - State management for agent sessions
 //! - Message routing between agents
 //! - Terminal capture for session recording
+//! - Benchmark task definitions and workspace isolation
 
 mod cli_capture;
 mod config;
@@ -16,6 +17,7 @@ mod event_parser;
 mod hat_registry;
 mod instructions;
 mod session_recorder;
+pub mod task_definition;
 
 pub use cli_capture::{CliCapture, CliCapturePair};
 pub use config::{CliConfig, EventLoopConfig, HatConfig, RalphConfig};
@@ -24,3 +26,4 @@ pub use event_parser::EventParser;
 pub use hat_registry::HatRegistry;
 pub use instructions::InstructionBuilder;
 pub use session_recorder::{Record, SessionRecorder};
+pub use task_definition::{TaskDefinition, TaskDefinitionError, TaskSetup, TaskSuite, Verification};
