@@ -175,18 +175,18 @@ impl EventLoop {
         self.instruction_builder.build_coordinator(prompt_content)
     }
 
-    /// Builds the Ralph Ralph prompt (build mode).
-    pub fn build_ralph_ralph_prompt(&self, prompt_content: &str) -> String {
-        self.instruction_builder.build_ralph_ralph(prompt_content)
+    /// Builds the Ralph prompt (build mode).
+    pub fn build_ralph_prompt(&self, prompt_content: &str) -> String {
+        self.instruction_builder.build_ralph(prompt_content)
     }
 
     /// Builds prompt for single-hat mode.
     ///
     /// In single mode, Ralph acts as a unified agent handling both planning
-    /// and implementation. Uses the Ralph Ralph (builder) prompt since single
+    /// and implementation. Uses the Ralph (builder) prompt since single
     /// mode is typically used for direct implementation workflows.
     pub fn build_single_prompt(&self, prompt_content: &str) -> String {
-        self.instruction_builder.build_ralph_ralph(prompt_content)
+        self.instruction_builder.build_ralph(prompt_content)
     }
 
     /// Processes output from a hat execution.

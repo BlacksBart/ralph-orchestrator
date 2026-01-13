@@ -1,8 +1,8 @@
 //! Instruction builder for Ralph agent prompts.
 //!
-//! Philosophy: Let Ralph Ralph. Two specialized agents, each with one job:
-//! - Coordinator: Plans work, owns scratchpad, validates completion
-//! - Ralph Ralph: Implements tasks, runs backpressure, commits
+//! Philosophy: Let Ralph Ralph. Two modes for one agent wearing different hats:
+//! - Coordinator (Planner hat): Plans work, owns scratchpad, validates completion
+//! - Ralph (Builder hat): Implements tasks, runs backpressure, commits
 //!
 //! This maps directly to ghuntley's PROMPT_plan.md / PROMPT_build.md split.
 
@@ -10,8 +10,8 @@ use ralph_proto::Hat;
 
 /// Builds the prepended instructions for agent prompts.
 ///
-/// Two-agent architecture: Coordinator (planner) and Ralph Ralph (builder).
-/// The orchestrator invokes the appropriate agent based on loop state.
+/// One agent, two hats: Coordinator (planner) and Ralph (builder).
+/// The orchestrator routes events to trigger hat changes.
 #[derive(Debug)]
 pub struct InstructionBuilder {
     completion_promise: String,
@@ -25,10 +25,10 @@ impl InstructionBuilder {
         }
     }
 
-    /// Builds Coordinator instructions (the Planner).
+    /// Builds Coordinator instructions (the Planner hat).
     ///
     /// Coordinator owns the scratchpad and decides what work needs doing.
-    /// It does NOT implement—that's Ralph Ralph's job.
+    /// It does NOT implement—that's Ralph's job (Builder hat).
     pub fn build_coordinator(&self, prompt_content: &str) -> String {
         format!(
             r#"You are Coordinator Ralph. You plan work and validate completion. You do NOT implement.
@@ -39,15 +39,15 @@ impl InstructionBuilder {
 
 2. **Own the scratchpad.** Create or update `.agent/scratchpad.md` with prioritized tasks. Mark `[x]` done, `[~]` cancelled.
 
-3. **Validate completion claims.** When Ralph Ralph reports done, verify the work actually satisfies the spec.
+3. **Validate completion claims.** When Ralph reports done, verify the work actually satisfies the spec.
 
 4. **Don't assume "not implemented."** Search before concluding something is missing.
 
 ## WHAT YOU DON'T DO
 
 - ❌ Write implementation code
-- ❌ Run tests (Ralph Ralph does that)
-- ❌ Make commits (Ralph Ralph does that)
+- ❌ Run tests (Ralph does that)
+- ❌ Make commits (Ralph does that)
 
 ## COMPLETION
 
@@ -60,12 +60,12 @@ When ALL tasks are `[x]` or `[~]` and ALL specs are satisfied, output: {promise}
         )
     }
 
-    /// Builds Ralph Ralph instructions (the Builder).
+    /// Builds Ralph instructions (the Builder hat).
     ///
-    /// Ralph Ralph implements tasks. It does NOT plan or manage the scratchpad.
-    pub fn build_ralph_ralph(&self, prompt_content: &str) -> String {
+    /// Ralph implements tasks. It does NOT plan or manage the scratchpad.
+    pub fn build_ralph(&self, prompt_content: &str) -> String {
         format!(
-            r#"You are Ralph Ralph. You implement. One task, then done.
+            r#"You are Ralph. You implement. One task, then done.
 
 ## YOUR JOB
 
@@ -188,21 +188,21 @@ mod tests {
     }
 
     #[test]
-    fn test_ralph_ralph_implements_not_plans() {
+    fn test_ralph_implements_not_plans() {
         let builder = InstructionBuilder::new("LOOP_COMPLETE");
-        let instructions = builder.build_ralph_ralph("Build a CLI tool");
+        let instructions = builder.build_ralph("Build a CLI tool");
 
-        // Identity
-        assert!(instructions.contains("Ralph Ralph"));
+        // Identity - should be "Ralph" not "Ralph Ralph"
+        assert!(instructions.contains("You are Ralph."));
         assert!(instructions.contains("Build a CLI tool"));
 
-        // Ralph Ralph's job
+        // Ralph's job
         assert!(instructions.contains("Pick ONE task"));
         assert!(instructions.contains("Implement it"));
         assert!(instructions.contains("Backpressure is law"));
         assert!(instructions.contains("Commit and exit"));
 
-        // What Ralph Ralph doesn't do
+        // What Ralph doesn't do
         assert!(instructions.contains("❌ Create the scratchpad"));
         assert!(instructions.contains("❌ Decide what tasks"));
         assert!(instructions.contains("❌ Output the completion promise"));
@@ -216,22 +216,22 @@ mod tests {
     }
 
     #[test]
-    fn test_coordinator_and_ralph_ralph_share_guardrails() {
+    fn test_coordinator_and_ralph_share_guardrails() {
         let builder = InstructionBuilder::new("DONE");
         let coordinator = builder.build_coordinator("test");
-        let ralph_ralph = builder.build_ralph_ralph("test");
+        let ralph = builder.build_ralph("test");
 
         // Both reference the scratchpad
         assert!(coordinator.contains(".agent/scratchpad.md"));
-        assert!(ralph_ralph.contains(".agent/scratchpad.md"));
+        assert!(ralph.contains(".agent/scratchpad.md"));
 
         // Both have "don't assume" guardrail
         assert!(coordinator.contains("Don't assume \"not implemented.\""));
-        assert!(ralph_ralph.contains("Don't assume \"not implemented.\""));
+        assert!(ralph.contains("Don't assume \"not implemented.\""));
 
         // Both use task markers
         assert!(coordinator.contains("[x]"));
-        assert!(ralph_ralph.contains("[x]"));
+        assert!(ralph.contains("[x]"));
         assert!(coordinator.contains("[~]"));
     }
 
@@ -239,19 +239,19 @@ mod tests {
     fn test_separation_of_concerns() {
         let builder = InstructionBuilder::new("DONE");
         let coordinator = builder.build_coordinator("test");
-        let ralph_ralph = builder.build_ralph_ralph("test");
+        let ralph = builder.build_ralph("test");
 
         // Coordinator does planning, not implementation
         assert!(coordinator.contains("Gap analysis"));
         assert!(!coordinator.contains("Commit and exit"));
 
-        // Ralph Ralph does implementation, not planning
-        assert!(ralph_ralph.contains("Commit and exit"));
-        assert!(!ralph_ralph.contains("Gap analysis"));
+        // Ralph does implementation, not planning
+        assert!(ralph.contains("Commit and exit"));
+        assert!(!ralph.contains("Gap analysis"));
 
         // Only Coordinator outputs completion promise
         assert!(coordinator.contains("output: DONE"));
-        assert!(!ralph_ralph.contains("output: DONE"));
+        assert!(!ralph.contains("output: DONE"));
     }
 
     #[test]
