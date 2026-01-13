@@ -112,8 +112,17 @@ impl CliBackend {
     }
 
     /// Builds the full command with arguments for execution.
-    pub fn build_command(&self, prompt: &str) -> (String, Vec<String>, Option<String>) {
+    ///
+    /// # Arguments
+    /// * `prompt` - The prompt text to pass to the agent
+    /// * `interactive` - Whether to run in interactive mode (affects agent flags)
+    pub fn build_command(&self, prompt: &str, interactive: bool) -> (String, Vec<String>, Option<String>) {
         let mut args = self.args.clone();
+
+        // Filter args based on execution mode per interactive-mode.spec.md
+        if interactive {
+            args = self.filter_args_for_interactive(args);
+        }
 
         let stdin_input = match self.prompt_mode {
             PromptMode::Arg => {
@@ -128,6 +137,16 @@ impl CliBackend {
 
         (self.command.clone(), args, stdin_input)
     }
+
+    /// Filters args for interactive mode per spec table.
+    fn filter_args_for_interactive(&self, args: Vec<String>) -> Vec<String> {
+        match self.command.as_str() {
+            "kiro-cli" => args.into_iter().filter(|a| a != "--no-interactive").collect(),
+            "codex" => args.into_iter().filter(|a| a != "--full-auto").collect(),
+            "amp" => args.into_iter().filter(|a| a != "--dangerously-allow-all").collect(),
+            _ => args, // claude, gemini unchanged
+        }
+    }
 }
 
 #[cfg(test)]
@@ -137,7 +156,7 @@ mod tests {
     #[test]
     fn test_claude_backend() {
         let backend = CliBackend::claude();
-        let (cmd, args, stdin) = backend.build_command("test prompt");
+        let (cmd, args, stdin) = backend.build_command("test prompt", false);
 
         assert_eq!(cmd, "claude");
         assert_eq!(
@@ -150,7 +169,7 @@ mod tests {
     #[test]
     fn test_kiro_backend() {
         let backend = CliBackend::kiro();
-        let (cmd, args, stdin) = backend.build_command("test prompt");
+        let (cmd, args, stdin) = backend.build_command("test prompt", false);
 
         assert_eq!(cmd, "kiro-cli");
         assert_eq!(
@@ -163,7 +182,7 @@ mod tests {
     #[test]
     fn test_gemini_backend() {
         let backend = CliBackend::gemini();
-        let (cmd, args, stdin) = backend.build_command("test prompt");
+        let (cmd, args, stdin) = backend.build_command("test prompt", false);
 
         assert_eq!(cmd, "gemini");
         assert!(args.is_empty());
@@ -173,7 +192,7 @@ mod tests {
     #[test]
     fn test_codex_backend() {
         let backend = CliBackend::codex();
-        let (cmd, args, stdin) = backend.build_command("test prompt");
+        let (cmd, args, stdin) = backend.build_command("test prompt", false);
 
         assert_eq!(cmd, "codex");
         assert_eq!(args, vec!["exec", "--full-auto", "test prompt"]);
@@ -183,7 +202,7 @@ mod tests {
     #[test]
     fn test_amp_backend() {
         let backend = CliBackend::amp();
-        let (cmd, args, stdin) = backend.build_command("test prompt");
+        let (cmd, args, stdin) = backend.build_command("test prompt", false);
 
         assert_eq!(cmd, "amp");
         assert_eq!(args, vec!["--dangerously-allow-all", "-x", "test prompt"]);
@@ -202,5 +221,60 @@ mod tests {
 
         assert_eq!(backend.command, "claude");
         assert_eq!(backend.prompt_mode, PromptMode::Arg);
+    }
+
+    #[test]
+    fn test_kiro_interactive_mode_omits_no_interactive_flag() {
+        let backend = CliBackend::kiro();
+        let (cmd, args, stdin) = backend.build_command("test prompt", true);
+
+        assert_eq!(cmd, "kiro-cli");
+        assert_eq!(args, vec!["chat", "--trust-all-tools", "test prompt"]);
+        assert!(stdin.is_none());
+        assert!(!args.contains(&"--no-interactive".to_string()));
+    }
+
+    #[test]
+    fn test_codex_interactive_mode_omits_full_auto() {
+        let backend = CliBackend::codex();
+        let (cmd, args, stdin) = backend.build_command("test prompt", true);
+
+        assert_eq!(cmd, "codex");
+        assert_eq!(args, vec!["exec", "test prompt"]);
+        assert!(stdin.is_none());
+        assert!(!args.contains(&"--full-auto".to_string()));
+    }
+
+    #[test]
+    fn test_amp_interactive_mode_no_flags() {
+        let backend = CliBackend::amp();
+        let (cmd, args, stdin) = backend.build_command("test prompt", true);
+
+        assert_eq!(cmd, "amp");
+        assert_eq!(args, vec!["-x", "test prompt"]);
+        assert!(stdin.is_none());
+        assert!(!args.contains(&"--dangerously-allow-all".to_string()));
+    }
+
+    #[test]
+    fn test_claude_interactive_mode_unchanged() {
+        let backend = CliBackend::claude();
+        let (cmd, args_auto, _) = backend.build_command("test prompt", false);
+        let (_, args_interactive, _) = backend.build_command("test prompt", true);
+
+        assert_eq!(cmd, "claude");
+        assert_eq!(args_auto, args_interactive);
+        assert!(args_auto.contains(&"--dangerously-skip-permissions".to_string()));
+    }
+
+    #[test]
+    fn test_gemini_interactive_mode_unchanged() {
+        let backend = CliBackend::gemini();
+        let (cmd, args_auto, stdin_auto) = backend.build_command("test prompt", false);
+        let (_, args_interactive, stdin_interactive) = backend.build_command("test prompt", true);
+
+        assert_eq!(cmd, "gemini");
+        assert_eq!(args_auto, args_interactive);
+        assert_eq!(stdin_auto, stdin_interactive);
     }
 }
