@@ -19,37 +19,19 @@ impl InstructionBuilder {
     /// Builds single-hat mode instructions.
     pub fn build_single_hat(&self, prompt_content: &str) -> String {
         format!(
-            r#"ORCHESTRATION CONTEXT:
-You are running within the Ralph Orchestrator loop. This system will call you
-repeatedly for multiple iterations until the overall task is complete.
+            r#"You are in a loop. Study PROMPT.md first.
 
-IMPORTANT INSTRUCTIONS:
-1. Implement only ONE small, focused task per iteration
-2. Mark subtasks complete as you finish them (update PROMPT.md checkboxes)
-3. Commit your changes after each iteration for checkpointing
-4. Use .agent/workspace/ for temporary files
+1. Study the implementation plan - don't assume tasks aren't implemented
+2. Select the most important incomplete task
+3. Implement it fully with tests
+4. Run validation (tests, build, lint)
+5. Update the plan marking completed work
+6. Commit changes
+7. Exit
 
-WORKFLOW:
-- Explore: Research and understand the codebase
-- Plan: Design your implementation approach
-- Implement: Write tests first (TDD), then code
-- Commit: Commit changes with clear messages
-
-AGENT SCRATCHPAD:
-Before starting, check .agent/scratchpad.md for previous progress.
-At iteration end, update it with:
-- What you accomplished
-- What remains to be done
-- Any blockers or decisions made
-
-Do NOT restart from scratch if scratchpad shows progress.
-
-COMPLETION:
-When ALL tasks in PROMPT.md are complete, output:
-{promise}
+When ALL tasks are complete, output exactly: {promise}
 
 ---
-ORIGINAL PROMPT:
 {prompt}"#,
             promise = self.completion_promise,
             prompt = prompt_content
@@ -104,7 +86,8 @@ mod tests {
 
         assert!(instructions.contains("LOOP_COMPLETE"));
         assert!(instructions.contains("Implement feature X"));
-        assert!(instructions.contains("AGENT SCRATCHPAD"));
+        assert!(instructions.contains("Study"));
+        assert!(instructions.contains("don't assume"));
     }
 
     #[test]

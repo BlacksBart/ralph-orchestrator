@@ -9,7 +9,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use ralph_adapters::{CliBackend, CliExecutor};
+use ralph_adapters::{detect_backend, CliBackend, CliExecutor};
 use ralph_core::{EventLoop, RalphConfig, TerminationReason};
 use std::io::stdout;
 use std::path::PathBuf;
@@ -66,7 +66,10 @@ async fn main() -> Result<()> {
         RalphConfig::default()
     };
 
-    // Apply CLI overrides
+    // Normalize v1 flat fields into v2 nested structure
+    config.normalize();
+
+    // Apply CLI overrides (after normalization so they take final precedence)
     if let Some(prompt) = args.prompt {
         config.event_loop.prompt_file = prompt.to_string_lossy().to_string();
     }
@@ -76,6 +79,34 @@ async fn main() -> Result<()> {
     if let Some(promise) = args.completion_promise {
         config.event_loop.completion_promise = promise;
     }
+    if args.verbose {
+        config.verbose = true;
+    }
+
+    // Validate configuration and emit warnings
+    let warnings = config.validate().context("Configuration validation failed")?;
+    for warning in &warnings {
+        eprintln!("{warning}");
+    }
+
+    // Handle auto-detection if backend is "auto"
+    if config.cli.backend == "auto" {
+        let priority = config.get_agent_priority();
+        let detected = detect_backend(&priority, |backend| {
+            config.adapter_settings(backend).enabled
+        });
+
+        match detected {
+            Ok(backend) => {
+                info!("Auto-detected backend: {}", backend);
+                config.cli.backend = backend;
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                return Err(anyhow::Error::new(e));
+            }
+        }
+    }
 
     if args.dry_run {
         println!("Dry run mode - configuration:");
@@ -83,7 +114,13 @@ async fn main() -> Result<()> {
         println!("  Prompt file: {}", config.event_loop.prompt_file);
         println!("  Completion promise: {}", config.event_loop.completion_promise);
         println!("  Max iterations: {}", config.event_loop.max_iterations);
+        println!("  Max runtime: {}s", config.event_loop.max_runtime_seconds);
         println!("  Backend: {}", config.cli.backend);
+        println!("  Git checkpoint: {}", config.git_checkpoint);
+        println!("  Verbose: {}", config.verbose);
+        if !warnings.is_empty() {
+            println!("  Warnings: {}", warnings.len());
+        }
         return Ok(());
     }
 
@@ -152,8 +189,8 @@ async fn run_loop(config: RalphConfig) -> Result<()> {
             break;
         }
 
-        // Handle checkpointing
-        if event_loop.should_checkpoint() {
+        // Handle checkpointing (only if git_checkpoint is enabled)
+        if config.git_checkpoint && event_loop.should_checkpoint() {
             create_checkpoint(event_loop.state().iteration)?;
         }
     }

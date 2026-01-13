@@ -41,7 +41,7 @@ impl CliBackend {
     pub fn claude() -> Self {
         Self {
             command: "claude".to_string(),
-            args: vec![],
+            args: vec!["--dangerously-skip-permissions".to_string()],
             prompt_mode: PromptMode::Arg,
             prompt_flag: Some("-p".to_string()),
         }
@@ -123,7 +123,10 @@ mod tests {
         let (cmd, args, stdin) = backend.build_command("test prompt");
 
         assert_eq!(cmd, "claude");
-        assert_eq!(args, vec!["-p", "test prompt"]);
+        assert_eq!(
+            args,
+            vec!["--dangerously-skip-permissions", "-p", "test prompt"]
+        );
         assert!(stdin.is_none());
     }
 
