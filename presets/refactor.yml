@@ -1,0 +1,127 @@
+# Refactoring Preset
+#
+# For safe code refactoring with verification at each step.
+# Emphasizes: test before, change, test after, verify behavior preserved.
+#
+# Usage:
+#   ralph start --config presets/refactor.yml --prompt "Extract the auth logic into a separate module"
+
+event_loop:
+  prompt_file: "PROMPT.md"
+  completion_promise: "REFACTOR_COMPLETE"
+  max_iterations: 50
+  max_runtime_seconds: 10800
+  checkpoint_interval: 3
+
+cli:
+  backend: "claude"
+
+core:
+  scratchpad: ".agent/scratchpad.md"
+  specs_dir: "./specs/"
+
+hats:
+  planner:
+    name: "Refactor Planner"
+    triggers: ["task.start", "task.resume", "refactor.done", "refactor.blocked", "verify.failed"]
+    publishes: ["refactor.task"]
+    instructions: |
+      ## REFACTOR PLANNER MODE
+
+      Plan safe, incremental refactoring steps.
+
+      ### Golden Rule
+      **Each step must leave the codebase in a working state.**
+
+      ### Process
+      1. **Understand current state.** Read the code. Run tests. Note current behavior.
+      2. **Define target state.** What should it look like after?
+      3. **Break into atomic steps.** Each step: one logical change, tests still pass.
+      4. **Order by dependency.** What must happen first?
+
+      ### Scratchpad Format
+      ```markdown
+      # Refactor: [Goal]
+
+      ## Current State
+      [Description of current structure]
+
+      ## Target State
+      [Description of desired structure]
+
+      ## Invariants
+      - [ ] Tests pass after each step
+      - [ ] No behavior changes (unless intentional)
+      - [ ] No new warnings
+
+      ## Steps
+      - [ ] Step 1: [atomic change]
+      - [ ] Step 2: [atomic change]
+      ```
+
+      ### DON'T
+      - ❌ Plan large, risky steps
+      - ❌ Combine unrelated changes
+      - ❌ Skip the "test first" baseline
+
+      ### DONE
+      When all steps are `[x]` and tests pass, output: REFACTOR_COMPLETE
+
+  refactorer:
+    name: "Refactorer"
+    triggers: ["refactor.task"]
+    publishes: ["refactor.done", "refactor.blocked"]
+    instructions: |
+      ## REFACTORER MODE
+
+      Execute ONE refactoring step safely.
+
+      ### Process
+      1. **Verify tests pass** before starting (baseline)
+      2. **Make the atomic change** described in the task
+      3. **Run tests** immediately after
+      4. **Run clippy** to catch new warnings
+      5. **Commit** with clear message
+
+      ### Commit Format
+      ```
+      refactor(scope): [what changed]
+
+      Step N of refactor: [goal]
+      - [specific change made]
+      ```
+
+      ### If Tests Fail
+      - DO NOT commit
+      - Publish `refactor.blocked` with failure details
+      - Planner will adjust the plan
+
+      ### DON'T
+      - ❌ Make multiple changes at once
+      - ❌ "Improve" unrelated code
+      - ❌ Skip verification
+      - ❌ Commit with failing tests
+
+  verifier:
+    name: "Verifier"
+    triggers: ["refactor.done"]
+    publishes: ["verify.passed", "verify.failed"]
+    instructions: |
+      ## VERIFIER MODE
+
+      Verify refactoring step preserved behavior.
+
+      ### Checks
+      1. `cargo test` — all tests pass
+      2. `cargo clippy` — no new warnings
+      3. `cargo check` — compiles cleanly
+      4. Manual spot-check if tests are sparse
+
+      ### If All Pass
+      Publish `verify.passed`
+
+      ### If Any Fail
+      Publish `verify.failed` with details:
+      - Which check failed
+      - Error output
+      - Suspected cause
