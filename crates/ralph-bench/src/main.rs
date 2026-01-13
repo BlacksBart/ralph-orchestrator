@@ -301,15 +301,15 @@ async fn cmd_run(
         }
 
         // Record task result
-        results.push(TaskResult {
-            name: task.name.clone(),
+        results.push(TaskResult::new(
+            task.name.clone(),
             iterations,
-            expected_iterations: task.expected_iterations,
+            task.expected_iterations,
             duration_secs,
             termination_reason,
-            verification_passed: verification_result.passed,
-            workspace_path: workspace.path().to_string_lossy().to_string(),
-        });
+            verification_result.passed,
+            workspace.path().to_string_lossy().to_string(),
+        ));
     }
 
     // Write results if output specified
@@ -443,6 +443,9 @@ struct TaskResult {
     name: String,
     iterations: u32,
     expected_iterations: Option<u32>,
+    /// Difference between actual and expected iterations (iterations - expected).
+    /// Positive means more iterations than expected, negative means fewer.
+    iteration_delta: Option<i32>,
     duration_secs: f64,
     termination_reason: String,
     verification_passed: bool,
@@ -450,11 +453,29 @@ struct TaskResult {
 }
 
 impl TaskResult {
-    /// Calculate iteration delta if expected is set
-    #[allow(dead_code)]
-    fn iteration_delta(&self) -> Option<i32> {
-        self.expected_iterations
-            .map(|expected| self.iterations as i32 - expected as i32)
+    /// Create a new TaskResult, calculating iteration_delta automatically.
+    fn new(
+        name: String,
+        iterations: u32,
+        expected_iterations: Option<u32>,
+        duration_secs: f64,
+        termination_reason: String,
+        verification_passed: bool,
+        workspace_path: String,
+    ) -> Self {
+        let iteration_delta = expected_iterations
+            .map(|expected| iterations as i32 - expected as i32);
+
+        Self {
+            name,
+            iterations,
+            expected_iterations,
+            iteration_delta,
+            duration_secs,
+            termination_reason,
+            verification_passed,
+            workspace_path,
+        }
     }
 }
 
