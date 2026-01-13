@@ -284,6 +284,7 @@ impl RalphConfig {
     /// - Deferred features that are enabled (archive_prompts, enable_metrics)
     /// - Dropped fields that are present (max_tokens, retry_delay, tool_permissions)
     /// - Ambiguous trigger routing across custom hats
+    /// - Mutual exclusivity of prompt and prompt_file
     ///
     /// Returns a list of warnings that should be displayed to the user.
     pub fn validate(&self) -> Result<Vec<ConfigWarning>, ConfigError> {
@@ -292,6 +293,14 @@ impl RalphConfig {
         // Skip all warnings if suppressed
         if self.suppress_warnings {
             return Ok(warnings);
+        }
+
+        // Check for mutual exclusivity of prompt and prompt_file
+        if self.event_loop.prompt.is_some() && self.event_loop.prompt_file != default_prompt_file() {
+            return Err(ConfigError::MutuallyExclusive {
+                field1: "event_loop.prompt".to_string(),
+                field2: "event_loop.prompt_file".to_string(),
+            });
         }
 
         // Check for deferred features
@@ -414,6 +423,9 @@ impl std::fmt::Display for ConfigWarning {
 /// Event loop configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventLoopConfig {
+    /// Inline prompt text (mutually exclusive with prompt_file).
+    pub prompt: Option<String>,
+
     /// Path to the prompt file.
     #[serde(default = "default_prompt_file")]
     pub prompt_file: String,
@@ -472,6 +484,7 @@ fn default_checkpoint_interval() -> u32 {
 impl Default for EventLoopConfig {
     fn default() -> Self {
         Self {
+            prompt: None,
             prompt_file: default_prompt_file(),
             completion_promise: default_completion_promise(),
             max_iterations: default_max_iterations(),
@@ -630,6 +643,12 @@ pub enum ConfigError {
         trigger: String,
         hat1: String,
         hat2: String,
+    },
+
+    #[error("Mutually exclusive fields: '{field1}' and '{field2}' cannot both be specified")]
+    MutuallyExclusive {
+        field1: String,
+        field2: String,
     },
 }
 

@@ -134,9 +134,13 @@ enum Commands {
 /// Arguments for the run subcommand.
 #[derive(Parser, Debug)]
 struct RunArgs {
-    /// Override the prompt file
-    #[arg(short, long)]
-    prompt: Option<PathBuf>,
+    /// Inline prompt text (mutually exclusive with -P)
+    #[arg(short = 'p', long = "prompt-text", conflicts_with = "prompt_file")]
+    prompt_text: Option<String>,
+
+    /// Prompt file path (mutually exclusive with -p)
+    #[arg(short = 'P', long = "prompt-file", conflicts_with = "prompt_text")]
+    prompt_file: Option<PathBuf>,
 
     /// Override max iterations
     #[arg(long)]
@@ -239,7 +243,8 @@ async fn main() -> Result<()> {
         None => {
             // Default to run with no overrides (backwards compatibility)
             let args = RunArgs {
-                prompt: None,
+                prompt_text: None,
+                prompt_file: None,
                 max_iterations: None,
                 completion_promise: None,
                 dry_run: false,
@@ -271,8 +276,12 @@ async fn run_command(
     config.normalize();
 
     // Apply CLI overrides (after normalization so they take final precedence)
-    if let Some(prompt) = args.prompt {
-        config.event_loop.prompt_file = prompt.to_string_lossy().to_string();
+    if let Some(text) = args.prompt_text {
+        config.event_loop.prompt = Some(text);
+        config.event_loop.prompt_file = String::new(); // Clear file path when using inline
+    } else if let Some(path) = args.prompt_file {
+        config.event_loop.prompt_file = path.to_string_lossy().to_string();
+        config.event_loop.prompt = None; // Clear inline when using file
     }
     if let Some(max_iter) = args.max_iterations {
         config.event_loop.max_iterations = max_iter;
@@ -324,7 +333,19 @@ async fn run_command(
     if args.dry_run {
         println!("Dry run mode - configuration:");
         println!("  Hats: {}", if config.hats.is_empty() { "planner, builder (default)".to_string() } else { config.hats.keys().cloned().collect::<Vec<_>>().join(", ") });
-        println!("  Prompt file: {}", config.event_loop.prompt_file);
+        
+        // Show prompt source
+        if let Some(ref inline) = config.event_loop.prompt {
+            let preview = if inline.len() > 60 {
+                format!("{}...", &inline[..60].replace('\n', " "))
+            } else {
+                inline.replace('\n', " ")
+            };
+            println!("  Prompt: inline text ({})", preview);
+        } else {
+            println!("  Prompt file: {}", config.event_loop.prompt_file);
+        }
+        
         println!("  Completion promise: {}", config.event_loop.completion_promise);
         println!("  Max iterations: {}", config.event_loop.max_iterations);
         println!("  Max runtime: {}s", config.event_loop.max_runtime_seconds);
@@ -694,6 +715,38 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
+/// Resolves prompt content with proper precedence.
+///
+/// Precedence (highest to lowest):
+/// 1. Config inline text (event_loop.prompt)
+/// 2. Config file path (event_loop.prompt_file)
+/// 3. Default PROMPT.md
+///
+/// Note: CLI overrides are already applied to config before this function is called.
+fn resolve_prompt_content(event_loop_config: &ralph_core::EventLoopConfig) -> Result<String> {
+    // Check for inline prompt first (highest precedence after CLI)
+    if let Some(ref inline_text) = event_loop_config.prompt {
+        debug!("Using inline prompt text from config");
+        return Ok(inline_text.clone());
+    }
+
+    // Check for prompt file (second precedence)
+    let prompt_file = &event_loop_config.prompt_file;
+    if !prompt_file.is_empty() {
+        if std::path::Path::new(prompt_file).exists() {
+            debug!(path = %prompt_file, "Reading prompt from file");
+            return std::fs::read_to_string(prompt_file)
+                .with_context(|| format!("Failed to read prompt file: {}", prompt_file));
+        }
+    }
+
+    // No valid prompt source found
+    anyhow::bail!(
+        "No prompt specified. Use -p \"text\" for inline prompt, -P path for file, \
+         or create PROMPT.md in the current directory."
+    )
+}
+
 async fn run_loop(config: RalphConfig, color_mode: ColorMode) -> Result<TerminationReason> {
     run_loop_impl(config, color_mode, false).await
 }
@@ -766,9 +819,13 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool)
         });
     }
 
-    // Read prompt file
-    let prompt_content = std::fs::read_to_string(&config.event_loop.prompt_file)
-        .with_context(|| format!("Failed to read prompt file: {}", config.event_loop.prompt_file))?;
+    // Resolve prompt content with precedence:
+    // 1. CLI -p (inline text)
+    // 2. CLI -P (file path)
+    // 3. Config prompt (inline text)
+    // 4. Config prompt_file (file path)
+    // 5. Default PROMPT.md
+    let prompt_content = resolve_prompt_content(&config.event_loop)?;
 
     // Initialize event loop
     let mut event_loop = EventLoop::new(config.clone());
