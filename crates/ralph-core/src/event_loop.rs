@@ -82,7 +82,10 @@ impl EventLoop {
     /// Creates a new event loop from configuration.
     pub fn new(config: RalphConfig) -> Self {
         let registry = HatRegistry::from_config(&config);
-        let instruction_builder = InstructionBuilder::new(&config.event_loop.completion_promise);
+        let instruction_builder = InstructionBuilder::new(
+            &config.event_loop.completion_promise,
+            config.core.clone(),
+        );
 
         let mut bus = EventBus::new();
         for hat in registry.all() {

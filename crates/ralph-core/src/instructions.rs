@@ -6,23 +6,59 @@
 //!
 //! This maps directly to ghuntley's PROMPT_plan.md / PROMPT_build.md split.
 
+use crate::config::CoreConfig;
 use ralph_proto::Hat;
 
 /// Builds the prepended instructions for agent prompts.
 ///
 /// One agent, two hats: Coordinator (planner) and Ralph (builder).
 /// The orchestrator routes events to trigger hat changes.
+///
+/// Per spec: "Core behaviors are always present—hats add to them, never replace."
+/// The builder injects core behaviors (scratchpad, specs, guardrails) into every prompt.
 #[derive(Debug)]
 pub struct InstructionBuilder {
     completion_promise: String,
+    core: CoreConfig,
 }
 
 impl InstructionBuilder {
-    /// Creates a new instruction builder.
-    pub fn new(completion_promise: impl Into<String>) -> Self {
+    /// Creates a new instruction builder with core configuration.
+    ///
+    /// The core config provides paths and guardrails that are injected
+    /// into every prompt, per the spec's "Core Behaviors" requirement.
+    pub fn new(completion_promise: impl Into<String>, core: CoreConfig) -> Self {
         Self {
             completion_promise: completion_promise.into(),
+            core,
         }
+    }
+
+    /// Builds the core behaviors section injected into all prompts.
+    ///
+    /// Per spec: "Every Ralph invocation includes these behaviors, regardless of which hat is active."
+    fn build_core_behaviors(&self) -> String {
+        let guardrails = self
+            .core
+            .guardrails
+            .iter()
+            .map(|g| format!("- {g}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        format!(
+            r"## CORE BEHAVIORS (Always Active)
+
+**Scratchpad:** `{scratchpad}` is shared state. Read it. Update it.
+**Specs:** `{specs_dir}` is the source of truth. Implementations must match.
+
+### Guardrails
+{guardrails}
+",
+            scratchpad = self.core.scratchpad,
+            specs_dir = self.core.specs_dir,
+            guardrails = guardrails,
+        )
     }
 
     /// Builds Coordinator instructions (the Planner hat).
@@ -30,18 +66,20 @@ impl InstructionBuilder {
     /// Coordinator owns the scratchpad and decides what work needs doing.
     /// It does NOT implement—that's Ralph's job (Builder hat).
     pub fn build_coordinator(&self, prompt_content: &str) -> String {
+        let core_behaviors = self.build_core_behaviors();
+
         format!(
-            r#"You are Coordinator Ralph. You plan work and validate completion. You do NOT implement.
+            "You are Coordinator Ralph. You plan work and validate completion. You do NOT implement.
+
+{core_behaviors}
 
 ## YOUR JOB
 
-1. **Gap analysis.** Study `./specs/` and compare against the codebase. What's missing? What's broken?
+1. **Gap analysis.** Study `{specs_dir}` and compare against the codebase. What's missing? What's broken?
 
-2. **Own the scratchpad.** Create or update `.agent/scratchpad.md` with prioritized tasks. Mark `[x]` done, `[~]` cancelled.
+2. **Own the scratchpad.** Create or update `{scratchpad}` with prioritized tasks. Mark `[x]` done, `[~]` cancelled.
 
 3. **Validate completion claims.** When Ralph reports done, verify the work actually satisfies the spec.
-
-4. **Don't assume "not implemented."** Search before concluding something is missing.
 
 ## WHAT YOU DON'T DO
 
@@ -54,7 +92,10 @@ impl InstructionBuilder {
 When ALL tasks are `[x]` or `[~]` and ALL specs are satisfied, output: {promise}
 
 ---
-{prompt}"#,
+{prompt}",
+            core_behaviors = core_behaviors,
+            specs_dir = self.core.specs_dir,
+            scratchpad = self.core.scratchpad,
             promise = self.completion_promise,
             prompt = prompt_content
         )
@@ -64,20 +105,20 @@ When ALL tasks are `[x]` or `[~]` and ALL specs are satisfied, output: {promise}
     ///
     /// Ralph implements tasks. It does NOT plan or manage the scratchpad.
     pub fn build_ralph(&self, prompt_content: &str) -> String {
+        let core_behaviors = self.build_core_behaviors();
+
         format!(
             r#"You are Ralph. You implement. One task, then done.
 
+{core_behaviors}
+
 ## YOUR JOB
 
-1. **Pick ONE task.** Read `.agent/scratchpad.md`, pick the highest priority `[ ]` task.
+1. **Pick ONE task.** Read `{scratchpad}`, pick the highest priority `[ ]` task.
 
 2. **Implement it.** Write the code. Follow existing patterns.
 
-3. **Backpressure is law.** Tests, typecheck, lint must pass before you're done.
-
-4. **Commit and exit.** One task, one commit, then you're done. The loop continues.
-
-5. **Don't assume "not implemented."** Search before concluding something is missing.
+3. **Commit and exit.** One task, one commit, then you're done. The loop continues.
 
 ## WHAT YOU DON'T DO
 
@@ -98,6 +139,8 @@ Can't finish? Publish `<event topic="build.blocked">` with:
 
 ---
 {prompt}"#,
+            core_behaviors = core_behaviors,
+            scratchpad = self.core.scratchpad,
             prompt = prompt_content
         )
     }
@@ -106,6 +149,8 @@ Can't finish? Publish `<event topic="build.blocked">` with:
     ///
     /// Use this for teams beyond the default Coordinator + Ralph.
     pub fn build_custom_hat(&self, hat: &Hat, events_context: &str) -> String {
+        let core_behaviors = self.build_core_behaviors();
+
         let role_instructions = if hat.instructions.is_empty() {
             "Follow the incoming event instructions.".to_string()
         } else {
@@ -126,7 +171,9 @@ Can't finish? Publish `<event topic="build.blocked">` with:
         };
 
         format!(
-            r#"You are {name}. Fresh context each iteration—`.agent/scratchpad.md` is shared memory.
+            r#"You are {name}. Fresh context each iteration.
+
+{core_behaviors}
 
 ## YOUR ROLE
 
@@ -135,8 +182,6 @@ Can't finish? Publish `<event topic="build.blocked">` with:
 ## THE RULES
 
 1. **One task, then exit.** The loop continues.
-2. **Backpressure is law.** Tests, typecheck, lint must pass.
-3. **Don't assume "not implemented."** Search first.
 
 ## EVENTS
 
@@ -151,6 +196,7 @@ Only Coordinator outputs: {promise}
 INCOMING:
 {events}"#,
             name = hat.name,
+            core_behaviors = core_behaviors,
             role_instructions = role_instructions,
             publish_topics = publish_topics,
             promise = self.completion_promise,
@@ -163,9 +209,13 @@ INCOMING:
 mod tests {
     use super::*;
 
+    fn default_builder(promise: &str) -> InstructionBuilder {
+        InstructionBuilder::new(promise, CoreConfig::default())
+    }
+
     #[test]
     fn test_coordinator_plans_not_implements() {
-        let builder = InstructionBuilder::new("LOOP_COMPLETE");
+        let builder = default_builder("LOOP_COMPLETE");
         let instructions = builder.build_coordinator("Build a CLI tool");
 
         // Identity
@@ -189,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_ralph_implements_not_plans() {
-        let builder = InstructionBuilder::new("LOOP_COMPLETE");
+        let builder = default_builder("LOOP_COMPLETE");
         let instructions = builder.build_ralph("Build a CLI tool");
 
         // Identity - should be "Ralph" not "Ralph Ralph"
@@ -199,7 +249,6 @@ mod tests {
         // Ralph's job
         assert!(instructions.contains("Pick ONE task"));
         assert!(instructions.contains("Implement it"));
-        assert!(instructions.contains("Backpressure is law"));
         assert!(instructions.contains("Commit and exit"));
 
         // What Ralph doesn't do
@@ -217,17 +266,19 @@ mod tests {
 
     #[test]
     fn test_coordinator_and_ralph_share_guardrails() {
-        let builder = InstructionBuilder::new("DONE");
+        let builder = default_builder("DONE");
         let coordinator = builder.build_coordinator("test");
         let ralph = builder.build_ralph("test");
 
-        // Both reference the scratchpad
+        // Both reference the scratchpad (from CoreConfig)
         assert!(coordinator.contains(".agent/scratchpad.md"));
         assert!(ralph.contains(".agent/scratchpad.md"));
 
-        // Both have "don't assume" guardrail
-        assert!(coordinator.contains("Don't assume \"not implemented.\""));
-        assert!(ralph.contains("Don't assume \"not implemented.\""));
+        // Both include default guardrails
+        assert!(coordinator.contains("search first"));
+        assert!(ralph.contains("search first"));
+        assert!(coordinator.contains("Backpressure"));
+        assert!(ralph.contains("Backpressure"));
 
         // Both use task markers
         assert!(coordinator.contains("[x]"));
@@ -237,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_separation_of_concerns() {
-        let builder = InstructionBuilder::new("DONE");
+        let builder = default_builder("DONE");
         let coordinator = builder.build_coordinator("test");
         let ralph = builder.build_ralph("test");
 
@@ -256,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_custom_hat_for_extended_teams() {
-        let builder = InstructionBuilder::new("DONE");
+        let builder = default_builder("DONE");
         let hat = Hat::new("reviewer", "Code Reviewer")
             .with_instructions("Review PRs for quality and correctness.");
 
@@ -270,8 +321,37 @@ mod tests {
         assert!(instructions.contains("PR #123 ready for review"));
         assert!(instructions.contains("<event topic="));
 
-        // Core rules
-        assert!(instructions.contains("Backpressure is law"));
-        assert!(instructions.contains("Don't assume \"not implemented.\""));
+        // Core behaviors are injected
+        assert!(instructions.contains("CORE BEHAVIORS"));
+        assert!(instructions.contains(".agent/scratchpad.md"));
+    }
+
+    #[test]
+    fn test_custom_guardrails_injected() {
+        let custom_core = CoreConfig {
+            scratchpad: ".workspace/plan.md".to_string(),
+            specs_dir: "./specifications/".to_string(),
+            guardrails: vec![
+                "Custom rule one".to_string(),
+                "Custom rule two".to_string(),
+            ],
+        };
+        let builder = InstructionBuilder::new("DONE", custom_core);
+
+        let coordinator = builder.build_coordinator("test");
+        let ralph = builder.build_ralph("test");
+
+        // Custom scratchpad path is used
+        assert!(coordinator.contains(".workspace/plan.md"));
+        assert!(ralph.contains(".workspace/plan.md"));
+
+        // Custom specs dir is used
+        assert!(coordinator.contains("./specifications/"));
+
+        // Custom guardrails are injected
+        assert!(coordinator.contains("Custom rule one"));
+        assert!(coordinator.contains("Custom rule two"));
+        assert!(ralph.contains("Custom rule one"));
+        assert!(ralph.contains("Custom rule two"));
     }
 }
