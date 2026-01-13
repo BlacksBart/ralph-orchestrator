@@ -8,6 +8,7 @@ use crate::hat_registry::HatRegistry;
 use crate::instructions::InstructionBuilder;
 use ralph_proto::{Event, EventBus, HatId};
 use std::time::{Duration, Instant};
+use tracing::{debug, info};
 
 /// Reason the event loop terminated.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,8 +140,15 @@ impl EventLoop {
 
     /// Initializes the loop by publishing the start event.
     pub fn initialize(&mut self, prompt_content: &str) {
+        info!(
+            mode = %if self.config.is_single_mode() { "single-hat" } else { "multi-hat" },
+            max_iterations = %self.config.event_loop.max_iterations,
+            "Initializing event loop"
+        );
+
         let start_event = Event::new("task.start", prompt_content);
         self.bus.publish(start_event);
+        debug!(topic = "task.start", "Published start event");
     }
 
     /// Gets the next hat to execute (if any have pending events).
@@ -202,6 +210,12 @@ impl EventLoop {
         let events = parser.parse(output);
 
         for event in events {
+            debug!(
+                topic = %event.topic,
+                source = ?event.source,
+                target = ?event.target,
+                "Publishing event from output"
+            );
             self.bus.publish(event);
         }
 
@@ -229,6 +243,11 @@ impl EventLoop {
     /// Records that a checkpoint was created.
     pub fn record_checkpoint(&mut self) {
         self.state.checkpoint_count += 1;
+        debug!(
+            checkpoint_count = self.state.checkpoint_count,
+            iteration = self.state.iteration,
+            "Checkpoint recorded"
+        );
     }
 }
 
