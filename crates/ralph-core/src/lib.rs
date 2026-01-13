@@ -7,13 +7,16 @@
 //! - Configuration loading and management
 //! - State management for agent sessions
 //! - Message routing between agents
+//! - Terminal capture for session recording
 
+mod cli_capture;
 mod config;
 mod event_loop;
 mod event_parser;
 mod hat_registry;
 mod instructions;
 
+pub use cli_capture::{CliCapture, CliCapturePair};
 pub use config::{CliConfig, EventLoopConfig, HatConfig, RalphConfig};
 pub use event_loop::{EventLoop, LoopState, TerminationReason};
 pub use event_parser::EventParser;
