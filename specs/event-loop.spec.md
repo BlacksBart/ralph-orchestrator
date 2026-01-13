@@ -338,12 +338,73 @@ Can't finish? Publish `build.blocked` with:
 
 ## Configuration
 
+### Prompt Configuration
+
+The task prompt can be specified via CLI flags or config file. This enables self-contained presets (single-file workflows) while preserving flexibility for external prompt files.
+
+| Source | Config Key / Flag | Description |
+|--------|-------------------|-------------|
+| CLI inline | `-p "text"` | Inline prompt text |
+| CLI file | `-P path` | Path to prompt file |
+| Config inline | `event_loop.prompt` | Inline prompt in YAML |
+| Config file | `event_loop.prompt_file` | Path to prompt file |
+| Default | — | `PROMPT.md` in working directory |
+
+**Precedence (highest to lowest):**
+
+```
+1. CLI -p "text"           # Explicit inline (wins over everything)
+2. CLI -P path             # Explicit file path
+3. Config prompt:          # Config inline text
+4. Config prompt_file:     # Config file path
+5. Default PROMPT.md       # Fallback
+```
+
+**Rules:**
+- `-p` and `-P` are mutually exclusive (error if both specified)
+- `prompt` and `prompt_file` are mutually exclusive (error if both specified)
+- CLI flags override config (more specific wins)
+- If none specified and `PROMPT.md` doesn't exist, error with helpful message
+
+**Example — Self-contained preset:**
+```yaml
+# presets/gap-analysis.yml
+event_loop:
+  prompt: |
+    Perform a deep gap analysis between specs and implementation.
+
+    ## Process
+    1. Read each spec in ./specs/
+    2. Compare acceptance criteria against implementation
+    3. Document gaps in ISSUES.md
+
+    ## Output
+    Write findings to ISSUES.md with structured format.
+  completion_promise: "GAP_ANALYSIS_COMPLETE"
+```
+
+**Example — External prompt file:**
+```yaml
+# ralph.yml
+event_loop:
+  prompt_file: "prompts/feature-request.md"
+```
+
+**Example — CLI override:**
+```bash
+# Override config prompt with quick task
+ralph run --config presets/feature.yml -p "Fix the failing auth tests"
+```
+
 ### Default
 
 ```yaml
 # ralph.yml
 event_loop:
-  prompt_file: "PROMPT.md"
+  # Prompt: specify ONE of these (or use CLI flags, or default to PROMPT.md)
+  # prompt: "Inline task description..."  # Inline prompt text
+  prompt_file: "PROMPT.md"                 # Path to prompt file (default)
+
   completion_promise: "LOOP_COMPLETE"
   max_iterations: 100
   max_runtime_seconds: 14400
@@ -442,20 +503,24 @@ The orchestrator validates hat configurations:
 | Flag | Description | Example |
 |------|-------------|---------|
 | `-p <text>` | Inline prompt text | `ralph run -p "Add login feature"` |
-| `-P <path>` | Prompt file path (overrides config) | `ralph run -P prompts/spec-sync.md` |
+| `-P <path>` | Prompt file path | `ralph run -P prompts/spec-sync.md` |
 
-**Precedence:** `-p` and `-P` are mutually exclusive. If neither is provided, uses `prompt_file` from config (default: `PROMPT.md`).
+See [Prompt Configuration](#prompt-configuration) for full precedence rules.
 
-**Inline prompt (`-p`)** is the common case—quick tasks without creating a file:
+**Quick tasks** — Use `-p` for one-off commands:
 ```bash
 ralph run -p "Fix the broken tests in auth module"
 ralph run -p "Add input validation to the signup form"
 ```
 
-**Prompt file (`-P`)** is for reusable prompts or complex instructions:
+**Self-contained presets** — Use `event_loop.prompt` in config (no separate file needed):
 ```bash
-ralph run -P prompts/spec-sync.md
-ralph run --config presets/research.yml -P my-question.md
+ralph run --config presets/gap-analysis.yml
+```
+
+**Override preset prompt** — CLI flags win over config:
+```bash
+ralph run --config presets/feature.yml -p "Just fix the auth bug"
 ```
 
 ### Other Options
@@ -745,6 +810,8 @@ The orchestrator owns all spawned CLI processes and must ensure no orphaned proc
 
 ### Prompt Options
 
+#### CLI Flags
+
 - **Given** user runs `ralph run -p "Fix the tests"`
 - **When** loop initializes
 - **Then** "Fix the tests" is used as prompt content (inline text)
@@ -753,10 +820,6 @@ The orchestrator owns all spawned CLI processes and must ensure no orphaned proc
 - **When** loop initializes
 - **Then** contents of `prompts/my-prompt.md` are used as prompt content
 
-- **Given** user runs `ralph run` without `-p` or `-P`
-- **When** loop initializes
-- **Then** contents of `prompt_file` from config are used (default: `PROMPT.md`)
-
 - **Given** user runs `ralph run -p "text" -P file.md`
 - **When** arguments are parsed
 - **Then** error is returned (mutually exclusive flags)
@@ -764,6 +827,38 @@ The orchestrator owns all spawned CLI processes and must ensure no orphaned proc
 - **Given** user runs `ralph run -P nonexistent.md`
 - **When** file does not exist
 - **Then** error is returned with helpful message
+
+#### Config File Prompts
+
+- **Given** config has `event_loop.prompt: "Inline task"`
+- **When** user runs `ralph run` without `-p` or `-P`
+- **Then** "Inline task" is used as prompt content
+
+- **Given** config has `event_loop.prompt_file: "custom.md"`
+- **When** user runs `ralph run` without `-p` or `-P`
+- **Then** contents of `custom.md` are used as prompt content
+
+- **Given** config has both `event_loop.prompt` and `event_loop.prompt_file`
+- **When** config is validated
+- **Then** error is returned (mutually exclusive options)
+
+- **Given** config has `event_loop.prompt: "Task"` and user runs `ralph run -p "Override"`
+- **When** loop initializes
+- **Then** "Override" is used (CLI wins over config)
+
+- **Given** config has `event_loop.prompt_file: "task.md"` and user runs `ralph run -p "Override"`
+- **When** loop initializes
+- **Then** "Override" is used (CLI wins over config)
+
+#### Default Fallback
+
+- **Given** user runs `ralph run` without `-p` or `-P`
+- **When** config has neither `prompt` nor `prompt_file`
+- **Then** contents of `PROMPT.md` from working directory are used
+
+- **Given** no prompt specified anywhere and `PROMPT.md` doesn't exist
+- **When** loop attempts to initialize
+- **Then** error is returned with message listing all prompt options
 
 ### Iteration Demarcation
 

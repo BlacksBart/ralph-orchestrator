@@ -264,8 +264,6 @@ async fn run_command(
     color_mode: ColorMode,
     args: RunArgs,
 ) -> Result<()> {
-    info!("Ralph Orchestrator v{}", env!("CARGO_PKG_VERSION"));
-
     // Load configuration
     let mut config = if config_path.exists() {
         RalphConfig::from_file(&config_path)
@@ -388,8 +386,6 @@ async fn resume_command(
     color_mode: ColorMode,
     args: ResumeArgs,
 ) -> Result<()> {
-    info!("Ralph Orchestrator v{} - Resuming", env!("CARGO_PKG_VERSION"));
-
     // Load configuration
     let mut config = if config_path.exists() {
         RalphConfig::from_file(&config_path)
@@ -787,6 +783,14 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool)
         event_loop.initialize(&prompt_content);
     }
 
+    // Per spec: Log startup message with registered hats
+    let hat_names: Vec<String> = event_loop.registry().ids().map(|id| id.to_string()).collect();
+    info!(
+        hats = ?hat_names,
+        "I'm Ralph. Got my hats ready: {}. Let's do this.",
+        hat_names.join(", ")
+    );
+
     // Initialize event logger for debugging
     let mut event_logger = EventLogger::default_path();
 
@@ -1003,6 +1007,13 @@ fn log_events_from_output(
     for event in events {
         // Determine which hat will be triggered by this event
         let triggered = registry.find_by_trigger(event.topic.as_str());
+
+        // Per spec: Log "Published {topic} → triggers {hat}" at DEBUG level
+        if let Some(triggered_hat) = triggered {
+            debug!("Published {} → triggers {}", event.topic, triggered_hat);
+        } else {
+            debug!("Published {} → no hat triggered", event.topic);
+        }
 
         let record = EventRecord::new(iteration, hat_id.to_string(), &event, triggered);
 
