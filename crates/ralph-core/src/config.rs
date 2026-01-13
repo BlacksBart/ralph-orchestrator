@@ -529,6 +529,12 @@ pub struct CoreConfig {
     /// Path to the specs directory (source of truth for requirements).
     #[serde(default = "default_specs_dir")]
     pub specs_dir: String,
+
+    /// Guardrails injected into every prompt (core behaviors).
+    ///
+    /// Per spec: These are always present regardless of hat.
+    #[serde(default = "default_guardrails")]
+    pub guardrails: Vec<String>,
 }
 
 fn default_scratchpad() -> String {
@@ -539,11 +545,20 @@ fn default_specs_dir() -> String {
     "./specs/".to_string()
 }
 
+fn default_guardrails() -> Vec<String> {
+    vec![
+        "Fresh context each iteration - scratchpad is memory".to_string(),
+        "Don't assume 'not implemented' - search first".to_string(),
+        "Backpressure is law - tests/typecheck/lint must pass".to_string(),
+    ]
+}
+
 impl Default for CoreConfig {
     fn default() -> Self {
         Self {
             scratchpad: default_scratchpad(),
             specs_dir: default_specs_dir(),
+            guardrails: default_guardrails(),
         }
     }
 }
@@ -893,6 +908,11 @@ hats:
         let config = RalphConfig::default();
         assert_eq!(config.core.scratchpad, ".agent/scratchpad.md");
         assert_eq!(config.core.specs_dir, "./specs/");
+        // Default guardrails per spec
+        assert_eq!(config.core.guardrails.len(), 3);
+        assert!(config.core.guardrails[0].contains("Fresh context"));
+        assert!(config.core.guardrails[1].contains("search first"));
+        assert!(config.core.guardrails[2].contains("Backpressure"));
     }
 
     #[test]
@@ -905,5 +925,23 @@ core:
         let config: RalphConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.core.scratchpad, ".workspace/plan.md");
         assert_eq!(config.core.specs_dir, "./specifications/");
+        // Guardrails should use defaults when not specified
+        assert_eq!(config.core.guardrails.len(), 3);
+    }
+
+    #[test]
+    fn test_core_config_custom_guardrails() {
+        let yaml = r#"
+core:
+  scratchpad: ".agent/scratchpad.md"
+  specs_dir: "./specs/"
+  guardrails:
+    - "Custom rule one"
+    - "Custom rule two"
+"#;
+        let config: RalphConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.core.guardrails.len(), 2);
+        assert_eq!(config.core.guardrails[0], "Custom rule one");
+        assert_eq!(config.core.guardrails[1], "Custom rule two");
     }
 }
