@@ -266,6 +266,23 @@ Follow the pattern of existing adapters. Add tests to verify command constructio
 | Backend times out | SIGTERM sent, then SIGKILL after grace period |
 | Prompt too large for arg mode | Use stdin mode instead (custom backends) |
 | No backends available | Clear error with installation links |
+| Working directory inaccessible | Error before spawn with clear message |
+
+### Working Directory
+
+Agents execute in a specific working directory, which determines where file operations and relative paths resolve.
+
+| Scenario | Working Directory |
+|----------|-------------------|
+| `ralph run` | Directory where `ralph` was invoked |
+| `ralph run` with `ralph.yml` in parent | Directory where `ralph` was invoked (not config location) |
+| Benchmark harness | Isolated workspace directory (see benchmark spec) |
+
+**Default behavior**: The agent process inherits Ralph's current working directory at spawn time. This is the directory from which the user ran the `ralph` command.
+
+**Why not the project root?** Some agents (like Claude) use their working directory to determine project scope. Running from a subdirectory is intentional—it lets users scope the agent to a specific area of the codebase.
+
+**PTY considerations**: When spawning agents in a PTY (interactive mode), the working directory must be set explicitly on the `CommandBuilder`. The PTY does not automatically inherit the parent process's cwd in all cases. See [interactive-mode.spec.md](interactive-mode.spec.md) for details.
 
 ### Output Processing
 
@@ -333,6 +350,24 @@ All adapters produce text output that Ralph processes for:
 **Given** `adapters.claude.timeout: 60`
 **When** Claude runs for more than 60 seconds
 **Then** Ralph sends SIGTERM and marks the iteration as timed out
+
+### Working Directory
+
+**Given** user runs `ralph run` from `/home/user/project/src`
+**When** Ralph spawns the agent
+**Then** the agent's working directory is `/home/user/project/src`
+
+**Given** user runs `ralph run` from `/home/user/project/src` with config at `/home/user/project/ralph.yml`
+**When** Ralph spawns the agent
+**Then** the agent's working directory is `/home/user/project/src` (not `/home/user/project`)
+
+**Given** user runs `ralph run` from a directory that doesn't exist (race condition, deleted during startup)
+**When** Ralph attempts to spawn the agent
+**Then** an error is returned indicating the working directory is inaccessible
+
+**Given** interactive mode with PTY spawning
+**When** Ralph builds the command
+**Then** the working directory is explicitly set on the PTY `CommandBuilder` (not relying on inheritance)
 
 ### Interactive Mode Compatibility
 

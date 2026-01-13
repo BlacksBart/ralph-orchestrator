@@ -87,6 +87,7 @@ Ralph orchestrates the agent headlessly.
 | Aspect | Behavior |
 |--------|----------|
 | **Process spawn** | Standard subprocess with piped I/O |
+| **Working directory** | Inherited from Ralph's cwd (see [cli-adapters.spec.md](cli-adapters.spec.md)) |
 | **Agent flags** | Non-interactive flags included (see table below) |
 | **User input** | Not forwarded (stdin not connected) |
 | **Ctrl+C** | SIGTERM to agent → 5s grace → SIGKILL (see [event-loop.spec.md](event-loop.spec.md)) |
@@ -101,11 +102,14 @@ User interacts with the agent through Ralph.
 | Aspect | Behavior |
 |--------|----------|
 | **Process spawn** | PTY via `portable-pty` |
+| **Working directory** | Explicitly set on `CommandBuilder` (see below) |
 | **Agent flags** | Non-interactive flags **omitted** |
 | **User input** | Forwarded to agent |
 | **Ctrl+C** | Forwarded to agent (see signal handling) |
 | **Output** | Real-time with ANSI preserved |
 | **Use case** | Development, debugging, manual oversight |
+
+**PTY Working Directory**: Unlike standard subprocesses, PTY-spawned processes may not reliably inherit the parent's working directory on all platforms. The `CommandBuilder` must explicitly call `.cwd(path)` to ensure the agent starts in the correct directory. This is the directory from which `ralph` was invoked. See [cli-adapters.spec.md](cli-adapters.spec.md) for working directory semantics.
 
 ### Agent Flags by Mode
 
@@ -351,6 +355,20 @@ After this spec is approved, update:
 - **Then** terminal may be in raw mode (user can recover with `reset` command)
 
 **Note:** SIGKILL cannot be caught, so terminal restoration is best-effort. Document `reset` command as recovery option.
+
+### Working Directory (PTY-specific)
+
+- **Given** interactive mode (`-i`)
+- **When** Ralph spawns the agent in a PTY
+- **Then** `CommandBuilder.cwd()` is called with Ralph's current working directory
+
+- **Given** interactive mode and user runs `ralph run -i` from `/home/user/project/src`
+- **When** the agent executes `pwd` or checks its working directory
+- **Then** the result is `/home/user/project/src`
+
+- **Given** interactive mode and the working directory becomes inaccessible after Ralph starts
+- **When** Ralph attempts to spawn the PTY
+- **Then** an error is returned (PTY spawn fails with OS error)
 
 ## Non-Goals
 
