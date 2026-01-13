@@ -157,28 +157,36 @@ impl EventLoop {
     }
 
     /// Builds the prompt for a hat's execution.
+    /// Builds prompt for a custom hat (extended multi-agent teams).
     pub fn build_prompt(&mut self, hat_id: &HatId) -> Option<String> {
         let hat = self.registry.get(hat_id)?;
 
-        if self.config.is_single_mode() {
-            // For single-hat mode, we need the prompt file content
-            // This will be passed in by the caller
-            None
-        } else {
-            // Multi-hat mode: build from pending events
-            let events = self.bus.take_pending(&hat_id.clone());
-            let events_context = events
-                .iter()
-                .map(|e| format!("Event: {} - {}", e.topic, e.payload))
-                .collect::<Vec<_>>()
-                .join("\n");
-            Some(self.instruction_builder.build_multi_hat(hat, &events_context))
-        }
+        let events = self.bus.take_pending(&hat_id.clone());
+        let events_context = events
+            .iter()
+            .map(|e| format!("Event: {} - {}", e.topic, e.payload))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Some(self.instruction_builder.build_custom_hat(hat, &events_context))
     }
 
-    /// Builds the single-hat mode prompt with given content.
+    /// Builds the Coordinator prompt (planning mode).
+    pub fn build_coordinator_prompt(&self, prompt_content: &str) -> String {
+        self.instruction_builder.build_coordinator(prompt_content)
+    }
+
+    /// Builds the Ralph Ralph prompt (build mode).
+    pub fn build_ralph_ralph_prompt(&self, prompt_content: &str) -> String {
+        self.instruction_builder.build_ralph_ralph(prompt_content)
+    }
+
+    /// Builds prompt for single-hat mode.
+    ///
+    /// In single mode, Ralph acts as a unified agent handling both planning
+    /// and implementation. Uses the Ralph Ralph (builder) prompt since single
+    /// mode is typically used for direct implementation workflows.
     pub fn build_single_prompt(&self, prompt_content: &str) -> String {
-        self.instruction_builder.build_single_hat(prompt_content)
+        self.instruction_builder.build_ralph_ralph(prompt_content)
     }
 
     /// Processes output from a hat execution.
