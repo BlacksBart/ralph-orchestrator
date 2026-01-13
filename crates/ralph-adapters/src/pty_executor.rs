@@ -181,12 +181,18 @@ impl PtyExecutor {
         let mut cmd_builder = CommandBuilder::new(&cmd);
         cmd_builder.args(&args);
 
+        // Set explicit working directory
+        let cwd = std::env::current_dir()
+            .map_err(|e| io::Error::other(format!("Failed to get current directory: {}", e)))?;
+        cmd_builder.cwd(&cwd);
+
         // Set up environment for PTY
         cmd_builder.env("TERM", "xterm-256color");
 
         debug!(
             command = %cmd,
             args = ?args,
+            cwd = ?cwd,
             cols = self.config.cols,
             rows = self.config.rows,
             "Spawning process in PTY"
