@@ -544,18 +544,12 @@ pub struct CliConfig {
     #[serde(default = "default_prompt_mode")]
     pub prompt_mode: String,
 
-    /// Enable PTY mode for rich terminal UI display.
-    /// When true, Claude runs in a pseudo-terminal, preserving colors, spinners, and animations.
-    #[serde(default)]
-    pub pty_mode: bool,
+    /// Execution mode when --interactive not specified.
+    /// Values: "autonomous" (default), "interactive"
+    #[serde(default = "default_mode")]
+    pub default_mode: String,
 
-    /// Enable interactive input in PTY mode.
-    /// When true (default), user keystrokes are forwarded to Claude.
-    /// When false (observe mode), input is ignored.
-    #[serde(default = "default_true")]
-    pub pty_interactive: bool,
-
-    /// Idle timeout in seconds for PTY mode.
+    /// Idle timeout in seconds for interactive mode.
     /// Process is terminated after this many seconds of inactivity (no output AND no user input).
     /// Set to 0 to disable idle timeout.
     #[serde(default = "default_idle_timeout")]
@@ -570,6 +564,10 @@ fn default_prompt_mode() -> String {
     "arg".to_string()
 }
 
+fn default_mode() -> String {
+    "autonomous".to_string()
+}
+
 fn default_idle_timeout() -> u32 {
     30 // 30 seconds per spec
 }
@@ -580,8 +578,7 @@ impl Default for CliConfig {
             backend: default_backend(),
             command: None,
             prompt_mode: default_prompt_mode(),
-            pty_mode: false,
-            pty_interactive: true,
+            default_mode: default_mode(),
             idle_timeout_secs: default_idle_timeout(),
         }
     }

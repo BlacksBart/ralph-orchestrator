@@ -151,29 +151,24 @@ struct RunArgs {
     dry_run: bool,
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PTY Mode Options
+    // Execution Mode Options
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Enable PTY mode for rich terminal UI display.
-    /// Claude runs in a pseudo-terminal, preserving colors, spinners, and animations.
-    #[arg(long)]
-    pty: bool,
+    /// Enable interactive mode (PTY with user input forwarding).
+    /// User can interact with the agent through Ralph.
+    #[arg(short, long, conflicts_with = "autonomous")]
+    interactive: bool,
 
-    /// PTY observation mode (no user input forwarding).
-    /// Implies --pty. User keystrokes are ignored; useful for demos and recording.
-    #[arg(long)]
-    observe: bool,
+    /// Force autonomous mode (headless, non-interactive).
+    /// Overrides default_mode from config.
+    #[arg(short, long, conflicts_with = "interactive")]
+    autonomous: bool,
 
-    /// Idle timeout in seconds for PTY mode (default: 30).
+    /// Idle timeout in seconds for interactive mode (default: 30).
     /// Process is terminated after this many seconds of inactivity.
     /// Set to 0 to disable idle timeout.
     #[arg(long)]
     idle_timeout: Option<u32>,
-
-    /// Disable PTY mode even if enabled in config.
-    /// Runs Claude in headless mode without terminal UI features.
-    #[arg(long)]
-    no_pty: bool,
 }
 
 /// Arguments for the resume subcommand.
@@ -186,17 +181,17 @@ struct ResumeArgs {
     #[arg(long)]
     max_iterations: Option<u32>,
 
-    /// Enable PTY mode
-    #[arg(long)]
-    pty: bool,
+    /// Enable interactive mode
+    #[arg(short, long, conflicts_with = "autonomous")]
+    interactive: bool,
 
-    /// PTY observation mode
-    #[arg(long)]
-    observe: bool,
+    /// Force autonomous mode
+    #[arg(short, long, conflicts_with = "interactive")]
+    autonomous: bool,
 
-    /// Disable PTY mode
+    /// Idle timeout in seconds for interactive mode
     #[arg(long)]
-    no_pty: bool,
+    idle_timeout: Option<u32>,
 }
 
 /// Arguments for the events subcommand.
@@ -248,10 +243,9 @@ async fn main() -> Result<()> {
                 max_iterations: None,
                 completion_promise: None,
                 dry_run: false,
-                pty: false,
-                observe: false,
+                interactive: false,
+                autonomous: false,
                 idle_timeout: None,
-                no_pty: false,
             };
             run_command(cli.config, cli.verbose, cli.color, args).await
         }
@@ -290,17 +284,11 @@ async fn run_command(
         config.verbose = true;
     }
 
-    // Apply PTY mode overrides per spec mode selection table
-    // --no-pty takes precedence over everything
-    if args.no_pty {
-        config.cli.pty_mode = false;
-    } else if args.observe {
-        // --observe implies --pty
-        config.cli.pty_mode = true;
-        config.cli.pty_interactive = false;
-    } else if args.pty {
-        config.cli.pty_mode = true;
-        config.cli.pty_interactive = true;
+    // Apply execution mode overrides per spec
+    if args.autonomous {
+        config.cli.default_mode = "autonomous".to_string();
+    } else if args.interactive {
+        config.cli.default_mode = "interactive".to_string();
     }
 
     // Override idle timeout if specified
@@ -343,18 +331,9 @@ async fn run_command(
         println!("  Backend: {}", config.cli.backend);
         println!("  Git checkpoint: {}", config.git_checkpoint);
         println!("  Verbose: {}", config.verbose);
-        // PTY mode info
-        let pty_mode_str = if config.cli.pty_mode {
-            if config.cli.pty_interactive {
-                "interactive"
-            } else {
-                "observe"
-            }
-        } else {
-            "headless"
-        };
-        println!("  PTY mode: {}", pty_mode_str);
-        if config.cli.pty_mode {
+        // Execution mode info
+        println!("  Default mode: {}", config.cli.default_mode);
+        if config.cli.default_mode == "interactive" {
             println!("  Idle timeout: {}s", config.cli.idle_timeout_secs);
         }
         if !warnings.is_empty() {
@@ -417,14 +396,15 @@ async fn resume_command(
     }
 
     // Apply PTY mode overrides
-    if args.no_pty {
-        config.cli.pty_mode = false;
-    } else if args.observe {
-        config.cli.pty_mode = true;
-        config.cli.pty_interactive = false;
-    } else if args.pty {
-        config.cli.pty_mode = true;
-        config.cli.pty_interactive = true;
+    if args.autonomous {
+        config.cli.default_mode = "autonomous".to_string();
+    } else if args.interactive {
+        config.cli.default_mode = "interactive".to_string();
+    }
+
+    // Override idle timeout if specified
+    if let Some(timeout) = args.idle_timeout {
+        config.cli.idle_timeout_secs = timeout;
     }
 
     // Validate configuration
@@ -544,17 +524,17 @@ fn print_events_table(records: &[ralph_core::EventRecord], use_colors: bool) {
     // Header
     if use_colors {
         println!(
-            "{BOLD}{DIM}  # │ Iteration │ Hat           │ Topic              │ Triggered      │ Payload{RESET}"
+            "{BOLD}{DIM}  # │ Time     │ Iteration │ Hat           │ Topic              │ Triggered      │ Payload{RESET}"
         );
         println!(
-            "{DIM}────┼───────────┼───────────────┼────────────────────┼────────────────┼─────────────────{RESET}"
+            "{DIM}────┼──────────┼───────────┼───────────────┼────────────────────┼────────────────┼─────────────────{RESET}"
         );
     } else {
         println!(
-            "  # | Iteration | Hat           | Topic              | Triggered      | Payload"
+            "  # | Time     | Iteration | Hat           | Topic              | Triggered      | Payload"
         );
         println!(
-            "----|-----------|---------------|--------------------|-----------------|-----------------"
+            "----|----------|-----------|---------------|--------------------|-----------------|-----------------"
         );
     }
 
@@ -567,10 +547,27 @@ fn print_events_table(records: &[ralph_core::EventRecord], use_colors: bool) {
             record.payload.replace('\n', " ")
         };
 
+        // Extract time portion (HH:MM:SS) from ISO 8601 timestamp
+        let time = record
+            .ts
+            .find('T')
+            .and_then(|t_pos| {
+                let after_t = &record.ts[t_pos + 1..];
+                // Find end of time (before timezone indicator or end of string)
+                let end = after_t
+                    .find(|c| c == 'Z' || c == '+' || c == '-')
+                    .unwrap_or(after_t.len());
+                let time_str = &after_t[..end];
+                // Take only HH:MM:SS (first 8 chars if available)
+                Some(&time_str[..time_str.len().min(8)])
+            })
+            .unwrap_or("-");
+
         if use_colors {
             println!(
-                "{DIM}{:>3}{RESET} │ {:>9} │ {:<13} │ {topic_color}{:<18}{RESET} │ {:<14} │ {DIM}{}{RESET}",
+                "{DIM}{:>3}{RESET} │ {:<8} │ {:>9} │ {:<13} │ {topic_color}{:<18}{RESET} │ {:<14} │ {DIM}{}{RESET}",
                 i + 1,
+                time,
                 record.iteration,
                 truncate(&record.hat, 13),
                 truncate(&record.topic, 18),
@@ -579,8 +576,9 @@ fn print_events_table(records: &[ralph_core::EventRecord], use_colors: bool) {
             );
         } else {
             println!(
-                "{:>3} | {:>9} | {:<13} | {:<18} | {:<14} | {}",
+                "{:>3} | {:<8} | {:>9} | {:<13} | {:<18} | {:<14} | {}",
                 i + 1,
+                time,
                 record.iteration,
                 truncate(&record.hat, 13),
                 truncate(&record.topic, 18),
@@ -714,12 +712,12 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool)
 
     let use_colors = color_mode.should_use_colors();
 
-    // Determine effective PTY mode (with fallback logic)
-    let use_pty = if config.cli.pty_mode {
+    // Determine effective execution mode (with fallback logic)
+    let use_interactive = if config.cli.default_mode == "interactive" {
         if stdout().is_terminal() {
             true
         } else {
-            warn!("PTY mode requested but stdout is not a TTY, falling back to headless");
+            warn!("Interactive mode requested but stdout is not a TTY, falling back to autonomous");
             false
         }
     } else {
@@ -809,12 +807,8 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool)
     // Create backend
     let backend = CliBackend::from_config(&config.cli);
 
-    // Log execution mode (PTY vs headless) - hat info already logged by initialize()
-    let exec_mode = if use_pty {
-        if config.cli.pty_interactive { "PTY interactive" } else { "PTY observe" }
-    } else {
-        "headless"
-    };
+    // Log execution mode - hat info already logged by initialize()
+    let exec_mode = if use_interactive { "interactive" } else { "autonomous" };
     debug!(execution_mode = %exec_mode, "Execution mode configured");
 
     // Track the last hat to detect hat changes for logging
@@ -900,8 +894,8 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool)
             }
         };
 
-        // Execute the prompt (PTY or headless mode)
-        let (output, success) = if use_pty {
+        // Execute the prompt (interactive or autonomous mode)
+        let (output, success) = if use_interactive {
             execute_pty(&backend, &config, &prompt).await?
         } else {
             let executor = CliExecutor::new(backend.clone());
@@ -953,28 +947,29 @@ async fn execute_pty(
     use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
     // Create PTY config from ralph config
+    let is_interactive = config.cli.default_mode == "interactive";
     let pty_config = PtyConfig {
-        interactive: config.cli.pty_interactive,
+        interactive: is_interactive,
         idle_timeout_secs: config.cli.idle_timeout_secs,
         ..PtyConfig::from_env()
     };
 
     let executor = PtyExecutor::new(backend.clone(), pty_config);
 
-    // Enter raw mode for interactive PTY to capture keystrokes
-    if config.cli.pty_interactive {
+    // Enter raw mode for interactive mode to capture keystrokes
+    if is_interactive {
         enable_raw_mode().context("Failed to enable raw mode")?;
     }
 
     // Use scopeguard to ensure raw mode is restored on any exit path
-    let _guard = scopeguard::guard(config.cli.pty_interactive, |interactive| {
+    let _guard = scopeguard::guard(is_interactive, |interactive| {
         if interactive {
             let _ = disable_raw_mode();
         }
     });
 
     // Run PTY executor
-    let result = if config.cli.pty_interactive {
+    let result = if is_interactive {
         executor.run_interactive(prompt).await
     } else {
         executor.run_observe(prompt)
