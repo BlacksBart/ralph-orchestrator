@@ -16,10 +16,6 @@ use tracing::debug;
 /// - v2: `cli: { backend: claude }`, `event_loop: { max_iterations: 100 }`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RalphConfig {
-    /// Execution mode: "single" or "multi".
-    #[serde(default = "default_mode")]
-    pub mode: String,
-
     /// Event loop configuration (v2 nested style).
     #[serde(default)]
     pub event_loop: EventLoopConfig,
@@ -32,7 +28,8 @@ pub struct RalphConfig {
     #[serde(default)]
     pub core: CoreConfig,
 
-    /// Hat definitions for multi-hat mode.
+    /// Custom hat definitions (optional).
+    /// If empty, default planner and builder hats are used.
     #[serde(default)]
     pub hats: HashMap<String, HatConfig>,
 
@@ -123,14 +120,9 @@ fn default_true() -> bool {
     true
 }
 
-fn default_mode() -> String {
-    "single".to_string()
-}
-
 impl Default for RalphConfig {
     fn default() -> Self {
         Self {
-            mode: default_mode(),
             event_loop: EventLoopConfig::default(),
             cli: CliConfig::default(),
             core: CoreConfig::default(),
@@ -217,17 +209,12 @@ impl RalphConfig {
         let content = std::fs::read_to_string(path_ref)?;
         let config: Self = serde_yaml::from_str(&content)?;
         debug!(
-            mode = %config.mode,
             backend = %config.cli.backend,
             has_v1_fields = config.agent.is_some(),
+            custom_hats = config.hats.len(),
             "Configuration loaded"
         );
         Ok(config)
-    }
-
-    /// Returns true if this is single-hat mode.
-    pub fn is_single_mode(&self) -> bool {
-        self.mode == "single"
     }
 
     /// Normalizes v1 flat fields into v2 nested structure.
@@ -296,8 +283,7 @@ impl RalphConfig {
     /// This method checks for:
     /// - Deferred features that are enabled (archive_prompts, enable_metrics)
     /// - Dropped fields that are present (max_tokens, retry_delay, tool_permissions)
-    /// - Invalid mode values
-    /// - Multi-hat mode without hat definitions
+    /// - Ambiguous trigger routing across custom hats
     ///
     /// Returns a list of warnings that should be displayed to the user.
     pub fn validate(&self) -> Result<Vec<ConfigWarning>, ConfigError> {
@@ -347,25 +333,6 @@ impl RalphConfig {
             warnings.push(ConfigWarning::DroppedField {
                 field: "adapters.*.tool_permissions".to_string(),
                 reason: "CLI tool manages its own permissions".to_string(),
-            });
-        }
-
-        // Validate mode
-        if self.mode != "single" && self.mode != "multi" {
-            warnings.push(ConfigWarning::InvalidValue {
-                field: "mode".to_string(),
-                message: format!(
-                    "Invalid mode '{}', expected 'single' or 'multi'. Defaulting to 'single'.",
-                    self.mode
-                ),
-            });
-        }
-
-        // Check multi-hat mode without hats
-        if self.mode == "multi" && self.hats.is_empty() {
-            warnings.push(ConfigWarning::InvalidValue {
-                field: "hats".to_string(),
-                message: "Multi-hat mode requires at least one hat definition".to_string(),
             });
         }
 
@@ -676,17 +643,16 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = RalphConfig::default();
-        assert_eq!(config.mode, "single");
-        assert!(config.is_single_mode());
+        // Default config has no custom hats (uses default planner+builder)
+        assert!(config.hats.is_empty());
         assert_eq!(config.event_loop.max_iterations, 100);
         assert!(config.git_checkpoint);
         assert!(!config.verbose);
     }
 
     #[test]
-    fn test_parse_yaml_v2_format() {
+    fn test_parse_yaml_with_custom_hats() {
         let yaml = r#"
-mode: "multi"
 event_loop:
   prompt_file: "TASK.md"
   completion_promise: "DONE"
@@ -701,10 +667,9 @@ hats:
     instructions: "You are the implementation agent."
 "#;
         let config: RalphConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(config.mode, "multi");
-        assert!(!config.is_single_mode());
-        assert_eq!(config.event_loop.prompt_file, "TASK.md");
+        // Custom hats are defined
         assert_eq!(config.hats.len(), 1);
+        assert_eq!(config.event_loop.prompt_file, "TASK.md");
 
         let hat = config.hats.get("implementer").unwrap();
         assert_eq!(hat.triggers.len(), 2);
@@ -714,7 +679,6 @@ hats:
     fn test_triggers_alias_for_subscriptions() {
         // Backwards compatibility: "subscriptions" is an alias for "triggers"
         let yaml = r#"
-mode: "multi"
 hats:
   builder:
     name: "Builder"
@@ -836,19 +800,6 @@ max_tokens: 4096
     }
 
     #[test]
-    fn test_validate_multi_hat_without_hats() {
-        let yaml = r#"
-mode: "multi"
-"#;
-        let config: RalphConfig = serde_yaml::from_str(yaml).unwrap();
-        let warnings = config.validate().unwrap();
-
-        assert!(warnings
-            .iter()
-            .any(|w| matches!(w, ConfigWarning::InvalidValue { field, .. } if field == "hats")));
-    }
-
-    #[test]
     fn test_adapter_settings() {
         let yaml = r#"
 adapters:
@@ -887,7 +838,6 @@ future_feature: true
     fn test_ambiguous_routing_rejected() {
         // Per spec: "Every trigger maps to exactly one hat | No ambiguous routing"
         let yaml = r#"
-mode: "multi"
 hats:
   planner:
     name: "Planner"
@@ -912,7 +862,6 @@ hats:
     fn test_unique_triggers_accepted() {
         // Valid config: each trigger maps to exactly one hat
         let yaml = r#"
-mode: "multi"
 hats:
   planner:
     name: "Planner"

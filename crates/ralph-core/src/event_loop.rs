@@ -255,15 +255,6 @@ impl EventLoop {
         self.instruction_builder.build_ralph(prompt_content)
     }
 
-    /// Builds prompt for single-hat mode.
-    ///
-    /// In single mode, Ralph acts as a unified agent handling both planning
-    /// and implementation. Uses the Ralph (builder) prompt since single
-    /// mode is typically used for direct implementation workflows.
-    pub fn build_single_prompt(&self, prompt_content: &str) -> String {
-        self.instruction_builder.build_ralph(prompt_content)
-    }
-
     /// Processes output from a hat execution.
     ///
     /// Returns the termination reason if the loop should stop.
@@ -303,12 +294,6 @@ impl EventLoop {
                 "Publishing event from output"
             );
             self.bus.publish(event);
-        }
-
-        // If single-hat mode and no completion, publish continue event
-        if self.config.is_single_mode() && self.bus.next_hat_with_pending().is_none() {
-            let continue_event = Event::new("task.continue", "Continue with the task");
-            self.bus.publish(continue_event);
         }
 
         // Check termination conditions

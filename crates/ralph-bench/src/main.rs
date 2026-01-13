@@ -430,8 +430,14 @@ async fn run_task_loop(
         let iteration = event_loop.state().iteration + 1;
         info!("Task '{}' iteration {}", task.name, iteration);
 
-        // Build prompt for this hat (benchmark always uses single-hat mode)
-        let prompt = event_loop.build_single_prompt(&prompt_content);
+        // Build prompt for this hat
+        let prompt = match event_loop.build_prompt(&hat_id) {
+            Some(p) => p,
+            None => {
+                warn!("Failed to build prompt for hat '{}'", hat_id);
+                continue;
+            }
+        };
 
         // Execute the prompt (capture output but don't print to stdout)
         let mut output_buf = Vec::new();

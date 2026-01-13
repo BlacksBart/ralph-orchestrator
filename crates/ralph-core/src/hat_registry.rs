@@ -20,15 +20,18 @@ impl HatRegistry {
     ///
     /// Per spec: "Given default config (no custom hats), When the loop initializes,
     /// Then planner and builder hats are registered with their triggers."
+    ///
+    /// Per spec: "There is only one Ralph who wears one or more hats."
+    /// What varies is which hats are registered, not a "mode".
     pub fn from_config(config: &RalphConfig) -> Self {
         let mut registry = Self::new();
 
-        if config.is_single_mode() || config.hats.is_empty() {
-            // Default mode: register planner and builder hats per spec
+        if config.hats.is_empty() {
+            // No custom hats defined: register default planner and builder hats per spec
             registry.register(Hat::default_planner());
             registry.register(Hat::default_builder());
         } else {
-            // Multi-hat mode with custom hats: create hats from config
+            // Custom hats defined: create hats from config
             for (id, hat_config) in &config.hats {
                 let hat = Self::hat_from_config(id, hat_config);
                 registry.register(hat);
@@ -118,9 +121,9 @@ mod tests {
     }
 
     #[test]
-    fn test_multi_mode_creates_configured_hats() {
+    fn test_custom_hats_override_defaults() {
+        // Per spec: When custom hats are defined, they replace the defaults
         let yaml = r#"
-mode: "multi"
 hats:
   implementer:
     name: "Implementer"
@@ -145,7 +148,6 @@ hats:
     #[test]
     fn test_find_subscribers() {
         let yaml = r#"
-mode: "multi"
 hats:
   impl:
     name: "Implementer"

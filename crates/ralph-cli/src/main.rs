@@ -337,7 +337,7 @@ async fn run_command(
 
     if args.dry_run {
         println!("Dry run mode - configuration:");
-        println!("  Mode: {}", config.mode);
+        println!("  Hats: {}", if config.hats.is_empty() { "planner, builder (default)".to_string() } else { config.hats.keys().cloned().collect::<Vec<_>>().join(", ") });
         println!("  Prompt file: {}", config.event_loop.prompt_file);
         println!("  Completion promise: {}", config.event_loop.completion_promise);
         println!("  Max iterations: {}", config.event_loop.max_iterations);
@@ -890,15 +890,11 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool)
         debug!("Iteration {}/{} — wearing {} hat", iteration, config.event_loop.max_iterations, hat_id);
 
         // Build prompt for this hat
-        let prompt = if config.is_single_mode() {
-            event_loop.build_single_prompt(&prompt_content)
-        } else {
-            match event_loop.build_prompt(&hat_id) {
-                Some(p) => p,
-                None => {
-                    error!("Failed to build prompt for hat '{}'", hat_id);
-                    continue;
-                }
+        let prompt = match event_loop.build_prompt(&hat_id) {
+            Some(p) => p,
+            None => {
+                error!("Failed to build prompt for hat '{}'", hat_id);
+                continue;
             }
         };
 
