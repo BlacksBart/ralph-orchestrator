@@ -107,7 +107,7 @@ impl CliBackend {
 
         Self {
             command,
-            args: vec![],
+            args: config.args.clone(),
             prompt_mode,
             prompt_flag: None,
         }

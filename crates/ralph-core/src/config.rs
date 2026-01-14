@@ -751,6 +751,11 @@ pub struct CliConfig {
     /// Set to 0 to disable idle timeout.
     #[serde(default = "default_idle_timeout")]
     pub idle_timeout_secs: u32,
+
+    /// Custom arguments to pass to the CLI command (for backend: "custom").
+    /// These are inserted before the prompt argument.
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 fn default_backend() -> String {
@@ -777,6 +782,7 @@ impl Default for CliConfig {
             prompt_mode: default_prompt_mode(),
             default_mode: default_mode(),
             idle_timeout_secs: default_idle_timeout(),
+            args: Vec::new(),
         }
     }
 }
