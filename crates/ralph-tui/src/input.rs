@@ -15,6 +15,8 @@ pub enum Command {
     Quit,
     Help,
     Pause,
+    Skip,
+    Abort,
     Unknown,
 }
 
@@ -56,6 +58,8 @@ impl InputRouter {
                         'q' => Command::Quit,
                         '?' => Command::Help,
                         'p' => Command::Pause,
+                        'n' => Command::Skip,
+                        'a' => Command::Abort,
                         _ => Command::Unknown,
                     })
                 } else {
@@ -165,5 +169,25 @@ mod tests {
 
         let cmd = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE);
         assert_eq!(router.route_key(cmd), RouteResult::Command(Command::Pause));
+    }
+
+    #[test]
+    fn skip_command_returns_n() {
+        let mut router = InputRouter::new();
+        let prefix = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
+        router.route_key(prefix);
+
+        let cmd = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE);
+        assert_eq!(router.route_key(cmd), RouteResult::Command(Command::Skip));
+    }
+
+    #[test]
+    fn abort_command_returns_a() {
+        let mut router = InputRouter::new();
+        let prefix = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::CONTROL);
+        router.route_key(prefix);
+
+        let cmd = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+        assert_eq!(router.route_key(cmd), RouteResult::Command(Command::Abort));
     }
 }

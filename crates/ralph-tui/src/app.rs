@@ -26,6 +26,7 @@ pub struct App {
     terminal_widget: Arc<Mutex<TerminalWidget>>,
     input_router: InputRouter,
     input_tx: mpsc::UnboundedSender<Vec<u8>>,
+    control_tx: mpsc::UnboundedSender<ralph_adapters::pty_handle::ControlCommand>,
 }
 
 impl App {
@@ -36,7 +37,7 @@ impl App {
         let PtyHandle {
             mut output_rx,
             input_tx,
-            ..
+            control_tx,
         } = pty_handle;
 
         // Spawn task to read PTY output and feed to terminal widget
@@ -54,6 +55,7 @@ impl App {
             terminal_widget,
             input_router: InputRouter::new(),
             input_tx,
+            control_tx,
         }
     }
 
@@ -124,6 +126,12 @@ impl App {
                                                     crate::state::LoopMode::Auto => crate::state::LoopMode::Paused,
                                                     crate::state::LoopMode::Paused => crate::state::LoopMode::Auto,
                                                 };
+                                            }
+                                            Command::Skip => {
+                                                let _ = self.control_tx.send(ralph_adapters::pty_handle::ControlCommand::Skip);
+                                            }
+                                            Command::Abort => {
+                                                let _ = self.control_tx.send(ralph_adapters::pty_handle::ControlCommand::Abort);
                                             }
                                             Command::Unknown => {}
                                         }

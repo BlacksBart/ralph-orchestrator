@@ -22,4 +22,8 @@ pub enum ControlCommand {
     Resize(u16, u16),
     /// Terminate the PTY process.
     Kill,
+    /// Skip current iteration.
+    Skip,
+    /// Abort the loop.
+    Abort,
 }

@@ -145,3 +145,100 @@ Ralph receives unclaimed event (or no event on first run)
 
 ## Q6: How does Ralph know what hats are available?
 
+**Answer:**
+
+Hat topology is loaded from the YAML config and injected into Ralph's prompt when hats are configured.
+
+**Flow:**
+```
+ralph.yml (or preset)
+    │
+    ├─► hats:
+    │     builder: { triggers: [...], publishes: [...], ... }
+    │     reviewer: { triggers: [...], publishes: [...], ... }
+    │
+    ▼
+Orchestrator reads config
+    │
+    ▼
+Builds hat topology table
+    │
+    ▼
+Injects into Ralph's prompt:
+
+    ## Available Hats
+
+    | Hat | Triggers On | Publishes | Description |
+    |-----|-------------|-----------|-------------|
+    | builder | `build.task` | `build.done`, `build.blocked` | Implements code |
+    | reviewer | `review.request` | `review.approved`, `review.changes_requested` | Reviews code |
+
+    ## To Delegate
+    Publish an event that triggers the hat you want.
+```
+
+**Key points:**
+- Configuration-driven, not dynamic discovery
+- Ralph knows exactly what's available based on what user defined
+- No hats configured = no table injected = Ralph does everything himself
+
+---
+
+## Q7: What does Ralph's default prompt look like?
+
+**Answer:**
+
+Ralph's prompt should reflect the Ralph Wiggum philosophy:
+- Simple, not clever
+- Trust iteration over prescription
+- Backpressure enforces correctness
+- The plan on disk is memory; fresh context is reliability
+
+**Core prompt (always present):**
+
+```markdown
+I'm Ralph. Fresh context, fresh start. The scratchpad is my memory.
+
+## ALWAYS
+- Read `.agent/scratchpad.md` — it's the plan, it's the state, it's the truth
+- Search before assuming — the codebase IS the instruction manual
+- Backpressure is law — tests, typecheck, lint must pass
+- One task, one commit — keep it atomic
+
+## DONE?
+All tasks `[x]` or `[~]`? Output: LOOP_COMPLETE
+```
+
+**Conditional injection — Solo mode (no hats):**
+
+```markdown
+## SOLO MODE
+No team today. I do the work myself.
+Pick the highest priority `[ ]` task and get it done.
+```
+
+**Conditional injection — Multi-hat mode (hats configured):**
+
+```markdown
+## MY TEAM
+I've got hats to delegate to. Use them.
+
+| Hat | Triggers On | Publishes | What They Do |
+|-----|-------------|-----------|--------------|
+| builder | `build.task` | `build.done`, `build.blocked` | Implements code |
+| reviewer | `review.request` | `review.approved`, `review.changes_requested` | Reviews code |
+
+To delegate: publish an event that triggers the hat.
+If no hat fits: do it myself.
+```
+
+**Key changes from previous draft:**
+- Simpler, more Ralph-like tone ("I'm Ralph" not "You are Ralph")
+- Solo/multi-hat sections are conditional, not always present
+- Removed verbose "YOUR JOB" section — Ralph knows what to do
+- Trust the iteration, don't over-explain
+
+---
+
+## Q8: How do presets change under this model?
+
