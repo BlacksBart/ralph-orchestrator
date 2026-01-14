@@ -109,7 +109,7 @@ impl CliBackend {
             command,
             args: config.args.clone(),
             prompt_mode,
-            prompt_flag: None,
+            prompt_flag: config.prompt_flag.clone(),
         }
     }
 

@@ -756,6 +756,11 @@ pub struct CliConfig {
     /// These are inserted before the prompt argument.
     #[serde(default)]
     pub args: Vec<String>,
+
+    /// Custom prompt flag for arg mode (for backend: "custom").
+    /// If None, defaults to "-p" for arg mode.
+    #[serde(default)]
+    pub prompt_flag: Option<String>,
 }
 
 fn default_backend() -> String {
@@ -783,6 +788,7 @@ impl Default for CliConfig {
             default_mode: default_mode(),
             idle_timeout_secs: default_idle_timeout(),
             args: Vec::new(),
+            prompt_flag: None,
         }
     }
 }
