@@ -1,6 +1,6 @@
 ---
 status: approved
-gap_analysis: 2026-01-13
+gap_analysis: 2026-01-14
 related:
   - cli-adapters.spec.md
   - interactive-mode.spec.md

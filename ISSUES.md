@@ -1,191 +1,210 @@
 # Gap Analysis Results
 
-> Analysis date: 2026-01-13
-> Specs analyzed: 13
+> Analysis date: 2026-01-14
+> Specs analyzed: 14
+> Previous analysis: 2026-01-13
 
 ## Summary
 
 | Priority | Issue | Spec | Status |
 |----------|-------|------|--------|
-| 🔴 P0 | Custom backend args/prompt_flag missing | cli-adapters.spec.md | NEW |
-| 🔴 P0 | Custom backend validation missing | cli-adapters.spec.md | NEW |
-| 🔴 P0 | Kiro adapter settings missing | cli-adapters.spec.md | NEW |
-| 🟡 P1 | Interactive idle timeout doesn't reset | interactive-mode.spec.md | NEW |
-| 🟡 P1 | Per-adapter timeout not enforced | cli-adapters.spec.md | NEW |
-| 🟡 P1 | CLI executor working directory | cli-adapters.spec.md | NEW |
-| 🟡 P1 | Planner behaviors instruction-only | event-loop.spec.md | By Design |
-| 🟡 P1 | Builder behaviors instruction-only | event-loop.spec.md | By Design |
-| 🟢 P2 | Scratchpad persistence not verified | event-loop.spec.md | By Design |
-| 🟢 P2 | Hat display order is random | event-loop.spec.md | Minor UX |
+| 🟡 P1 | Backend flag filtering uses config default, not execution mode | interactive-mode.spec.md | NEW |
+| 🟡 P1 | Reachability validation not implemented | hat-collections.spec.md | PLANNED |
+| 🟡 P1 | Observer not wired to EventBus during benchmark runs | benchmark-harness.spec.md | TODO |
+| 🟢 P2 | Custom hat emoji/registry integration missing | terminal-ui.spec.md | MINOR |
+| 🟢 P2 | recovery_hat configuration field missing | hat-collections.spec.md | PLANNED |
+| 🟢 P2 | terminal_events configuration field missing | hat-collections.spec.md | PLANNED |
+| 🟢 P2 | Test tools not agent-callable | test-tools.spec.md | ~30% |
+| 🟢 P2 | Benchmark export formats not implemented | benchmark-ux.spec.md | PLANNED |
+| 🔵 P3 | 6 specs missing frontmatter | Various | DOCS |
+
+### Resolved Since 2026-01-13
+
+The following P0 issues from the previous analysis have been **fixed**:
+
+| Issue | Resolution |
+|-------|------------|
+| Custom backend args/prompt_flag missing | ✅ Fixed: `CliConfig` now has `args`, `prompt_flag`, `prompt_mode` fields |
+| Custom backend validation missing | ✅ Fixed: Returns `CustomBackendError` when command not specified |
+| Kiro adapter settings missing | ✅ Fixed: `AdaptersConfig` now includes `kiro` field |
+| Per-adapter timeout not enforced | ✅ Fixed: `cli_executor.rs` reads and enforces per-adapter timeout |
+| CLI executor working directory not set | ✅ Fixed: Both CLI and PTY executors explicitly set `current_dir()` |
+| Interactive idle timeout doesn't reset | ✅ Fixed: Resets on both agent output AND user input |
 
 ---
 
 ## Critical Gaps (Spec Violations)
 
-### 🔴 P0: Custom Backend Args Field Missing
+### interactive-mode.spec.md — Backend Flag Filtering Logic Issue
 
-**Spec:** cli-adapters.spec.md (lines 335-337)
-
-- **Spec says:** Custom backends accept `args: ["--headless", "--json"]` configuration
-- **Implementation:** `CliConfig` lacks `args` field, `CliBackend::custom()` initializes with empty vec
-- **Location:** `crates/ralph-core/src/config.rs:547-571`, `crates/ralph-adapters/src/cli_backend.rs:108-114`
-
-**Impact:** Users cannot pass custom arguments to proprietary/internal CLI tools.
-
----
-
-### 🔴 P0: Custom Backend prompt_flag Field Missing
-
-**Spec:** cli-adapters.spec.md (line 102)
-
-- **Spec says:** Custom backends accept `prompt_flag: "--prompt"` configuration
-- **Implementation:** `CliConfig` lacks `prompt_flag` field, hardcoded to `None`
-- **Location:** `crates/ralph-core/src/config.rs:549-571`, `crates/ralph-adapters/src/cli_backend.rs:108-112`
-
-**Impact:** Custom backends cannot use prompt flags other than positional arguments.
-
----
-
-### 🔴 P0: Custom Backend Validation Missing
-
-**Spec:** cli-adapters.spec.md (lines 340-341)
-
-- **Spec says:** "an error indicates custom backend requires a command"
-- **Implementation:** Falls back to `"echo"` instead of returning an error
-- **Location:** `crates/ralph-adapters/src/cli_backend.rs:101`
-
-**Impact:** Silent fallback instead of clear error message.
-
----
-
-### 🔴 P0: Kiro Adapter Settings Missing
-
-**Spec:** cli-adapters.spec.md (line 65, Quick Reference table)
-
-- **Spec says:** All 5 backends (claude, gemini, kiro, codex, amp) should have adapter settings
-- **Implementation:** `AdaptersConfig` only defines claude, gemini, codex, amp - no kiro field
-- **Location:** `crates/ralph-core/src/config.rs:154-171`, `adapter_settings()` at line 386-394
-
-**Impact:** Cannot configure kiro-specific timeout or enabled status.
+- **Spec says:** "Agent flags are determined by execution mode, not config default" (lines 264-284)
+- **Implementation:** `build_command()` receives `interactive` boolean from config's `default_mode`, not actual execution mode
+- **Location:** `crates/ralph-adapters/src/cli_backend.rs:179`, `crates/ralph-cli/src/main.rs:1134`
+- **Impact:** When Claude backend forces PTY mode (interactive) but config says `default_mode: "autonomous"`, other backends like kiro may receive incorrect flags
+- **Severity:** Medium
+- **Fix:** Pass the actual execution mode boolean to `build_command()`, not just the config setting
 
 ---
 
 ## Missing Features (Spec Not Implemented)
 
-### 🟡 P1: Interactive Idle Timeout Doesn't Reset on Activity
+### hat-collections.spec.md — Reachability Validation
 
-**Spec:** interactive-mode.spec.md (lines 155-159)
+- **Acceptance criterion:** "Error 'Hat X is unreachable from entry point' when hat cannot be reached via event flow"
+- **Status:** Not implemented - no DFS graph traversal exists
+- **Location:** Should be in `crates/ralph-core/src/config.rs:preflight_check()`
+- **Spec reference:** Lines 224-248 (detailed algorithm provided)
+- **Workaround:** Orphan event detection catches most misconfigurations
 
-- **Acceptance criterion:** "timeout resets on... User input (any key forwarded to agent)"
-- **Status:** `run_interactive` creates fixed timeout future; doesn't track `last_activity` like `run_observe`
-- **Location:** `crates/ralph-adapters/src/pty_executor.rs:474-479`
+### hat-collections.spec.md — Recovery Hat Configuration
 
-**Impact:** Interactive sessions may timeout despite active user input.
+- **Acceptance criterion:** "Configurable `recovery_hat` field with default to 'planner'"
+- **Status:** Field does not exist in `EventLoopConfig`
+- **Location:** `crates/ralph-core/src/config.rs:617-652` (EventLoopConfig struct)
+- **Current behavior:** Hardcoded to "planner" at `crates/ralph-core/src/event_loop.rs:288`
+
+### hat-collections.spec.md — Terminal Events Configuration
+
+- **Acceptance criterion:** "Configurable `terminal_events` list"
+- **Status:** Field does not exist - hardcoded to `["LOOP_COMPLETE", completion_promise]`
+- **Location:** `crates/ralph-core/src/config.rs:448`
+
+### hat-collections.spec.md — Strict Validation Bypass
+
+- **Acceptance criterion:** "`strict_validation: false` downgrades errors to warnings"
+- **Status:** Field does not exist in `EventLoopConfig`
+
+### terminal-ui.spec.md — Custom Hat Emoji Support
+
+- **Acceptance criterion:** "Custom hats display with configurable emoji"
+- **Status:** No mechanism to assign emojis to custom hats beyond hardcoded "🎭"
+- **Location:** `crates/ralph-tui/src/state.rs:44-64`
+- **Severity:** Low (affects only custom hat scenarios)
+
+### terminal-ui.spec.md — HatRegistry Integration for Custom Hats
+
+- **Acceptance criterion:** "TUI initialized with HatRegistry to look up subscriptions" (spec line 99)
+- **Status:** TUI hardcodes mappings for planner and builder only
+- **Location:** `crates/ralph-tui/src/state.rs`
+- **Severity:** Medium (custom hats with non-standard subscriptions won't display correctly)
+
+### benchmark-harness.spec.md — Observer Wiring
+
+- **Acceptance criterion:** "Observer subscribes to EventBus::publish() and logs all events"
+- **Status:** SessionRecorder created but not wired to EventBus during task execution
+- **Location:** `crates/ralph-bench/src/main.rs:397` (TODO comment exists)
+- **Impact:** Events aren't actually recorded to JSONL during benchmark runs
+- **Fix:** Wire `SessionRecorder::make_observer()` to `EventLoop::set_observer()`
+
+### benchmark-ux.spec.md — Export Formats
+
+- **Acceptance criterion:** "Export to asciinema cast, VHS tape, and SVG formats"
+- **Status:** Not implemented - no `ralph-bench export` subcommand
+- **What exists:** SessionPlayer can replay JSONL with timing and ANSI colors
+
+### benchmark-ux.spec.md — Snapshot Testing
+
+- **Acceptance criterion:** "Snapshot testing with insta integration"
+- **Status:** Not implemented - no snapshot comparison infrastructure
+
+### test-tools.spec.md — Agent-Callable Test Tools
+
+- **Acceptance criteria:** 9 test tools callable by agents
+- **Status:** ~30% implemented - infrastructure exists but tools not exposed
+- **What exists:**
+  - SessionRecorder (JSONL capture) ✓
+  - SessionPlayer (replay with timing) ✓
+  - TaskWorkspace (isolation) ✓
+  - EventLoop (orchestration) ✓
+- **What's missing:**
+  - Agent-callable tool wrappers
+  - Mock backend for deterministic testing
+  - 14 assertion types engine
+  - VCR cassette format (YAML)
+  - LLM-as-judge evaluation runner
+  - JUnit/TAP report generation
 
 ---
 
-### 🟡 P1: Per-Adapter Timeout Not Enforced
+## Undocumented Behavior (Implementation Without Spec)
 
-**Spec:** cli-adapters.spec.md (lines 359-361)
+### ralph-bench crate
 
-- **Acceptance criterion:** "adapters.claude.timeout: 60... Ralph sends SIGTERM and marks iteration as timed out"
-- **Status:** Timeout configured in `AdapterSettings` but never read during execution
-- **Location:** Timeout defined at `config.rs:178` but not used in `cli_executor.rs` or `pty_executor.rs`
+- **Behavior:** Full benchmarking binary with run/list/replay/show subcommands
+- **Should be documented in:** benchmark-harness.spec.md or new ralph-bench.spec.md
+- **Location:** `crates/ralph-bench/src/main.rs`
 
-**Impact:** Per-adapter timeouts have no effect; all adapters use default timeout.
+### Task abandonment event
 
----
-
-### 🟡 P1: CLI Executor Working Directory Not Set
-
-**Spec:** cli-adapters.spec.md (lines 365-372)
-
-- **Acceptance criterion:** "agent's working directory is `/home/user/project/src`" (where ralph was invoked)
-- **Status:** PTY executor sets `current_dir()` explicitly; CLI executor does not
-- **Location:** `crates/ralph-adapters/src/cli_executor.rs:40-106` (no `current_dir()` call)
-
-**Impact:** Autonomous mode agents may execute in unexpected working directory.
+- **Behavior:** Emits `build.task.abandoned` event after 3 consecutive blocks
+- **Should be documented in:** event-loop.spec.md (implicit but event name not specified)
+- **Location:** `crates/ralph-core/src/event_loop.rs:496-501`
 
 ---
 
 ## Spec Improvements Needed
 
-### event-loop.spec.md
+### Missing Frontmatter (6 specs)
 
-**Issue:** Loop thrashing detection mechanism differs from spec
+The following specs lack standard YAML frontmatter (status, gap_analysis, related):
 
-- **Spec says:** "same hat emits 3+ consecutive `build.blocked` events" triggers termination
-- **Implementation:** Uses task-level redispatch counting instead of hat-level consecutive blocks
-- **Suggestion:** Update spec to document actual behavior, which provides equivalent safety
+- feature-parity.spec.md
+- v1-v2-feature-parity.spec.md
+- benchmark-tasks.spec.md
+- benchmark-harness.spec.md
+- benchmark-ux.spec.md
+- homebrew-tap.spec.md
 
-**Issue:** Escape hatch instructions incomplete
+### hat-collections.spec.md — Stale gap_analysis
 
-- **Spec says:** Planner can mark tasks `[~]` with explanation
-- **Implementation:** `build.task.abandoned` event exists but planner instructions don't explicitly mention `[~]` marking
-- **Suggestion:** Add explicit instruction for planner to mark abandoned tasks as `[~]`
-
----
-
-### cli-adapters.spec.md
-
-**Issue:** Explicit backend validation not implemented
-
-- **Spec says:** "error indicates Gemini was requested but not found" (line 325-327)
-- **Implementation:** No validation that explicitly-selected backend exists before execution
-- **Suggestion:** Add PATH check when backend is explicitly configured (not auto)
+- **Problem:** `gap_analysis: null` despite partial implementation existing
+- **Suggestion:** Update to `gap_analysis: 2026-01-14`
 
 ---
 
-## By-Design Decisions (Not Bugs)
+## Verification Summary by Spec
 
-These issues were previously documented and confirmed as intentional per Ralph Tenets:
-
-### 🟡 P1: Planner/Builder Behaviors Instruction-Only
-
-Per **Ralph Tenets #2: "Backpressure Over Prescription"**:
-> Don't prescribe how—create gates that reject bad work... Backpressure is enforceable; instructions are suggestions.
-
-- Planner behaviors (gap analysis, scratchpad management, one-task-at-a-time) are instruction-only
-- Builder behaviors (commit on success, mark [x], handle missing files) are instruction-only
-- **Backpressure** (tests pass, lint pass, typecheck pass) IS enforced in `build.done` parsing
-
-**No code changes needed** - this is the intended design.
-
-### 🟢 P2: Scratchpad Persistence Not Verified
-
-Orchestrator tells hats about scratchpad path but doesn't verify it exists or was updated. Works in practice because agents follow instructions. Low risk.
-
-### 🟢 P2: Hat Display Order Random
-
-`HashMap.keys()` iteration is non-deterministic. Cosmetic only.
+| Spec | Status | Conformance | Notes |
+|------|--------|-------------|-------|
+| cli-adapters.spec.md | review | **100%** | All acceptance criteria pass ✅ |
+| interactive-mode.spec.md | review | **95%** | Backend flag filtering issue |
+| event-loop.spec.md | approved | **100%** | All acceptance criteria pass ✅ |
+| scaffolding.spec.md | implemented | **100%** | All acceptance criteria pass ✅ |
+| terminal-ui.spec.md | implemented | **98%** | Custom hat emoji/registry minor |
+| hat-collections.spec.md | draft | **60%** | 5 validations done, 5 missing |
+| behavioral-verification.spec.md | draft | N/A | Not analyzed (draft) |
+| test-tools.spec.md | review | **30%** | Infrastructure exists, tools not callable |
+| feature-parity.spec.md | N/A | N/A | Missing frontmatter |
+| v1-v2-feature-parity.spec.md | N/A | **100%** | Checklist complete ✅ |
+| benchmark-tasks.spec.md | N/A | **95%** | Nearly complete |
+| benchmark-harness.spec.md | N/A | **85%** | Observer wiring needed |
+| benchmark-ux.spec.md | N/A | **80%** | Export formats missing |
+| homebrew-tap.spec.md | N/A | N/A | External distribution |
 
 ---
 
-## Specs Not Yet Implemented
+## Recommended Priority
 
-These specs are in draft/review status and represent planned future work:
+### P0 — None Currently
 
-| Spec | Status | Purpose |
-|------|--------|---------|
-| behavioral-verification.spec.md | draft | Test catalog for all behaviors |
-| test-tools.spec.md | review | VCR, mock, LLM-as-judge testing infrastructure |
-| benchmark-harness.spec.md | — | Recording/replay for benchmarks |
-| benchmark-tasks.spec.md | — | Benchmark task definitions |
-| benchmark-ux.spec.md | — | Terminal capture for benchmarks |
+All previous P0 issues have been resolved.
 
-These are NOT spec violations - they're planned features not yet built.
+### P1 — Fix Before Release
 
----
+1. **Interactive mode backend flag filtering** (medium impact, small fix)
+2. **Benchmark observer wiring** (enables actual session recording)
 
-## Verification Summary
+### P2 — Implement When Needed
 
-| Spec | Implementation | Notes |
-|------|----------------|-------|
-| event-loop.spec.md | 98% ✅ | All critical behaviors implemented |
-| cli-adapters.spec.md | 75% ⚠️ | Custom backends incomplete |
-| interactive-mode.spec.md | 95% ✅ | Idle timeout bug |
-| terminal-ui.spec.md | 100% ✅ | Fully implemented |
-| scaffolding.spec.md | 100% ✅ | Project structure complete |
-| feature-parity.spec.md | — | Informational/migration guide |
-| v1-v2-feature-parity.spec.md | — | Informational/migration guide |
-| homebrew-tap.spec.md | — | External distribution |
+1. Hat-collections reachability validation
+2. Hat-collections recovery_hat/terminal_events configuration
+3. Terminal-ui custom hat registry integration
+4. Test-tools agent-callable wrappers
+5. Benchmark export formats
+
+### P3 — Future Enhancement
+
+1. Test-tools full implementation (mock backend, cassettes, LLM-as-judge)
+2. Homebrew tap setup
+3. cargo-dist distribution pipeline
+4. Add missing frontmatter to 6 specs

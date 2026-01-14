@@ -1,6 +1,6 @@
 ---
 status: draft
-gap_analysis: null
+gap_analysis: 2026-01-14
 related:
   - event-loop.spec.md
 ---

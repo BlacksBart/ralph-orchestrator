@@ -1,7 +1,7 @@
 ---
 status: review
-gap_analysis: 2026-01-13
-last_updated: 2026-01-13
+gap_analysis: 2026-01-14
+last_updated: 2026-01-14
 related:
   - event-loop.spec.md
   - cli-adapters.spec.md
