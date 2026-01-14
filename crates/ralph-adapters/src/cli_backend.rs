@@ -70,9 +70,9 @@ impl CliBackend {
     pub fn gemini() -> Self {
         Self {
             command: "gemini".to_string(),
-            args: vec![],
-            prompt_mode: PromptMode::Stdin,
-            prompt_flag: None,
+            args: vec!["--yolo".to_string()],
+            prompt_mode: PromptMode::Arg,
+            prompt_flag: Some("-p".to_string()),
         }
     }
 
@@ -247,8 +247,8 @@ mod tests {
         let (cmd, args, stdin, _temp) = backend.build_command("test prompt", false);
 
         assert_eq!(cmd, "gemini");
-        assert!(args.is_empty());
-        assert_eq!(stdin, Some("test prompt".to_string()));
+        assert_eq!(args, vec!["--yolo", "-p", "test prompt"]);
+        assert!(stdin.is_none());
     }
 
     #[test]
@@ -337,6 +337,8 @@ mod tests {
 
         assert_eq!(cmd, "gemini");
         assert_eq!(args_auto, args_interactive);
+        assert_eq!(args_auto, vec!["--yolo", "-p", "test prompt"]);
         assert_eq!(stdin_auto, stdin_interactive);
+        assert!(stdin_auto.is_none());
     }
 }
