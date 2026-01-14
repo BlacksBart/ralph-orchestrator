@@ -276,12 +276,13 @@ async fn run_command(
     config.normalize();
 
     // Apply CLI overrides (after normalization so they take final precedence)
+    // Per spec: CLI -p and -P are mutually exclusive (enforced by clap)
     if let Some(text) = args.prompt_text {
         config.event_loop.prompt = Some(text);
-        config.event_loop.prompt_file = String::new(); // Clear file path when using inline
+        config.event_loop.prompt_file = String::new(); // Clear file path
     } else if let Some(path) = args.prompt_file {
         config.event_loop.prompt_file = path.to_string_lossy().to_string();
-        config.event_loop.prompt = None; // Clear inline when using file
+        config.event_loop.prompt = None; // Clear inline
     }
     if let Some(max_iter) = args.max_iterations {
         config.event_loop.max_iterations = max_iter;
@@ -718,25 +719,34 @@ fn truncate(s: &str, max_len: usize) -> String {
 /// Resolves prompt content with proper precedence.
 ///
 /// Precedence (highest to lowest):
-/// 1. Config inline text (event_loop.prompt)
-/// 2. Config file path (event_loop.prompt_file)
-/// 3. Default PROMPT.md
+/// 1. CLI -p "text" (inline prompt text)
+/// 2. CLI -P path (prompt file path)
+/// 3. Config event_loop.prompt (inline prompt text)
+/// 4. Config event_loop.prompt_file (prompt file path)
+/// 5. Default PROMPT.md
 ///
 /// Note: CLI overrides are already applied to config before this function is called.
 fn resolve_prompt_content(event_loop_config: &ralph_core::EventLoopConfig) -> Result<String> {
-    // Check for inline prompt first (highest precedence after CLI)
+    // Check for inline prompt first (CLI -p or config prompt)
     if let Some(ref inline_text) = event_loop_config.prompt {
-        debug!("Using inline prompt text from config");
+        debug!("Using inline prompt text");
         return Ok(inline_text.clone());
     }
 
-    // Check for prompt file (second precedence)
+    // Check for prompt file (CLI -P or config prompt_file or default)
     let prompt_file = &event_loop_config.prompt_file;
     if !prompt_file.is_empty() {
-        if std::path::Path::new(prompt_file).exists() {
+        let path = std::path::Path::new(prompt_file);
+        if path.exists() {
             debug!(path = %prompt_file, "Reading prompt from file");
-            return std::fs::read_to_string(prompt_file)
+            return std::fs::read_to_string(path)
                 .with_context(|| format!("Failed to read prompt file: {}", prompt_file));
+        } else {
+            // File specified but doesn't exist - error with helpful message
+            anyhow::bail!(
+                "Prompt file '{}' not found. Check the path or use -p \"text\" for inline prompt.",
+                prompt_file
+            );
         }
     }
 

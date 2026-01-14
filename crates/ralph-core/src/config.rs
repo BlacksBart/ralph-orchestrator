@@ -295,8 +295,9 @@ impl RalphConfig {
             return Ok(warnings);
         }
 
-        // Check for mutual exclusivity of prompt and prompt_file
-        if self.event_loop.prompt.is_some() && self.event_loop.prompt_file != default_prompt_file() {
+        // Check for mutual exclusivity of prompt and prompt_file in config
+        // Only error if both are explicitly set (not defaults)
+        if self.event_loop.prompt.is_some() && !self.event_loop.prompt_file.is_empty() && self.event_loop.prompt_file != default_prompt_file() {
             return Err(ConfigError::MutuallyExclusive {
                 field1: "event_loop.prompt".to_string(),
                 field2: "event_loop.prompt_file".to_string(),
@@ -932,5 +933,63 @@ core:
         assert_eq!(config.core.guardrails.len(), 2);
         assert_eq!(config.core.guardrails[0], "Custom rule one");
         assert_eq!(config.core.guardrails[1], "Custom rule two");
+    }
+
+    #[test]
+    fn test_prompt_and_prompt_file_mutually_exclusive() {
+        // Both prompt and prompt_file specified in config should error
+        let yaml = r#"
+event_loop:
+  prompt: "inline text"
+  prompt_file: "custom.md"
+"#;
+        let config: RalphConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(&err, ConfigError::MutuallyExclusive { field1, field2 } 
+                if field1 == "event_loop.prompt" && field2 == "event_loop.prompt_file"),
+            "Expected MutuallyExclusive error, got: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_prompt_with_default_prompt_file_allowed() {
+        // Having inline prompt with default prompt_file value should be OK
+        let yaml = r#"
+event_loop:
+  prompt: "inline text"
+"#;
+        let config: RalphConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_ok(), "Should allow inline prompt with default prompt_file");
+        assert_eq!(config.event_loop.prompt, Some("inline text".to_string()));
+        assert_eq!(config.event_loop.prompt_file, "PROMPT.md");
+    }
+
+    #[test]
+    fn test_prompt_file_with_no_inline_allowed() {
+        // Having only prompt_file specified should be OK
+        let yaml = r#"
+event_loop:
+  prompt_file: "custom.md"
+"#;
+        let config: RalphConfig = serde_yaml::from_str(yaml).unwrap();
+        let result = config.validate();
+        
+        assert!(result.is_ok(), "Should allow prompt_file without inline prompt");
+        assert_eq!(config.event_loop.prompt, None);
+        assert_eq!(config.event_loop.prompt_file, "custom.md");
+    }
+
+    #[test]
+    fn test_default_prompt_file_value() {
+        let config = RalphConfig::default();
+        assert_eq!(config.event_loop.prompt_file, "PROMPT.md");
+        assert_eq!(config.event_loop.prompt, None);
     }
 }
