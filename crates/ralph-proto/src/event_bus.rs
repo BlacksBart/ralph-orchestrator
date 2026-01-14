@@ -190,19 +190,20 @@ mod tests {
     #[test]
     fn test_self_routing_allowed() {
         // Self-routing is allowed to handle LLM non-determinism.
-        // If a hat emits an event it subscribes to, it should still receive it.
-        // Loop prevention is handled by thrashing detection, not source filtering.
+        // Spec acceptance criteria: planner emits build.done (even though builder "should"),
+        // event routes back to planner, planner continues (no source-based blocking).
         let mut bus = EventBus::new();
 
-        let hat = Hat::new("impl", "Implementer").subscribe("*");
-        bus.register(hat);
+        let planner = Hat::new("planner", "Planner").subscribe("build.done");
+        bus.register(planner);
 
-        let event = Event::new("impl.done", "Done").with_source("impl");
+        // Planner emits build.done (wrong hat, but LLMs are non-deterministic)
+        let event = Event::new("build.done", "Done").with_source("planner");
         let recipients = bus.publish(event);
 
-        // Event SHOULD route back to source (self-routing allowed)
+        // Event SHOULD route back to planner (self-routing allowed, no source filtering)
         assert_eq!(recipients.len(), 1);
-        assert_eq!(recipients[0].as_str(), "impl");
+        assert_eq!(recipients[0].as_str(), "planner");
     }
 
     #[test]
