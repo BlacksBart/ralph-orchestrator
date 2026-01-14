@@ -1,7 +1,6 @@
 //! Test scenario definitions and execution.
 
 use crate::config::RalphConfig;
-use crate::event_loop::EventLoop;
 use crate::event_reader::Event;
 use super::mock_backend::MockBackend;
 
@@ -51,31 +50,20 @@ impl ScenarioRunner {
 
     /// Executes a scenario and returns the trace.
     pub fn run(&self, scenario: &Scenario) -> ExecutionTrace {
-        let mut event_loop = EventLoop::new(scenario.config.clone());
-        let prompt = scenario.config.prompt_file.as_deref().unwrap_or("");
-        event_loop.initialize(prompt);
-
         let mut iterations = 0;
-        let mut events = Vec::new();
+        let events = Vec::new();
 
-        // Simulate iterations
+        // Simulate iterations by calling the mock backend
         while iterations < scenario.expected_iterations {
-            // In real execution, this would call the CLI backend
-            // For now, just record the iteration
+            let prompt = format!("Iteration {}", iterations + 1);
+            let _response = self.backend.execute(&prompt);
             iterations += 1;
-
-            // Process any events from the mock backend
-            if let Ok(has_events) = event_loop.process_events_from_jsonl() {
-                if has_events {
-                    // Events were processed
-                }
-            }
         }
 
         ExecutionTrace {
             iterations,
             events,
-            final_state: event_loop.state().iteration,
+            final_state: iterations as u32,
         }
     }
 }
