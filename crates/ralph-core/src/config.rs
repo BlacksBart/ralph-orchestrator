@@ -513,31 +513,10 @@ impl RalphConfig {
         (errors, warnings)
     }
 
-    /// Returns effective hat configurations, using defaults if none configured.
-    fn get_effective_hats(&self) -> HashMap<String, HatConfig> {
-        if self.hats.is_empty() {
-            // Return default planner + builder config
-            let mut defaults = HashMap::new();
-            defaults.insert("planner".to_string(), HatConfig {
-                name: "Planner".to_string(),
-                triggers: vec!["task.start".to_string(), "task.resume".to_string(), "build.done".to_string(), "build.blocked".to_string()],
-                publishes: vec!["build.task".to_string()],
-                instructions: String::new(),
-                backend: None,
-                default_publishes: None,
-            });
-            defaults.insert("builder".to_string(), HatConfig {
-                name: "Builder".to_string(),
-                triggers: vec!["build.task".to_string()],
-                publishes: vec!["build.done".to_string(), "build.blocked".to_string()],
-                instructions: String::new(),
-                backend: None,
-                default_publishes: None,
-            });
-            defaults
-        } else {
-            self.hats.clone()
-        }
+    /// Returns hat configurations from config.
+    /// Empty config → empty hats (HatlessRalph is the fallback, not default hats).
+    pub(crate) fn get_effective_hats(&self) -> HashMap<String, HatConfig> {
+        self.hats.clone()
     }
 
     /// Returns the agent priority list for auto-detection.

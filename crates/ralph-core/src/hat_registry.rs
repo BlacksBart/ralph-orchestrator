@@ -19,14 +19,13 @@ impl HatRegistry {
 
     /// Creates a registry from configuration.
     ///
-    /// Empty config → empty registry (no hats).
-    /// HatlessRalph is the fallback coordinator when no hats are configured.
+    /// Empty config → empty registry (HatlessRalph is the fallback, not default hats).
     pub fn from_config(config: &RalphConfig) -> Self {
         let mut registry = Self::new();
 
-        for (id, hat_config) in &config.hats {
-            let hat = Self::hat_from_config(id, hat_config);
-            registry.register_with_config(hat, hat_config.clone());
+        for (id, hat_config) in config.get_effective_hats() {
+            let hat = Self::hat_from_config(&id, &hat_config);
+            registry.register_with_config(hat, hat_config);
         }
 
         registry
@@ -123,9 +122,9 @@ mod tests {
         let config = RalphConfig::default();
         let registry = HatRegistry::from_config(&config);
 
-        // Empty config → empty registry (HatlessRalph is the fallback)
-        assert_eq!(registry.len(), 0);
+        // Empty config → empty registry (HatlessRalph is the fallback, not default hats)
         assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
     }
 
     #[test]
@@ -191,6 +190,7 @@ hats:
         let config = RalphConfig::default();
         let registry = HatRegistry::from_config(&config);
 
+        // Empty config → no subscribers (HatlessRalph handles orphaned events)
         assert!(!registry.has_subscriber("build.task"));
         assert!(registry.get_for_topic("build.task").is_none());
     }
