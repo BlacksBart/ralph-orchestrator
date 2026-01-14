@@ -7,7 +7,9 @@
 //! - Real-time display of agent messages and state
 //! - Keyboard navigation and input handling
 
+mod app;
 mod state;
 mod widgets;
 
+pub use app::App;
 pub use state::TuiState;

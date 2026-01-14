@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-pub fn render_footer(state: &TuiState) -> Paragraph<'static> {
+pub fn render(state: &TuiState) -> Paragraph<'static> {
     let last_event = state
         .last_event
         .as_ref()

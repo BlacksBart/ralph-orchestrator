@@ -13,7 +13,7 @@ fn format_duration(d: Duration) -> String {
     format!("{:02}:{:02}:{:02}", h, m, s)
 }
 
-pub fn render_status(state: &TuiState) -> Paragraph<'static> {
+pub fn render(state: &TuiState) -> Paragraph<'static> {
     let hat_display = state.get_pending_hat_display();
     let iteration = state.iteration + 1;
     let loop_time = state

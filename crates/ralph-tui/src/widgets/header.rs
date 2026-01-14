@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 
-pub fn render_header(state: &TuiState) -> Paragraph<'static> {
+pub fn render(state: &TuiState) -> Paragraph<'static> {
     let status = if state.pending_hat.is_some() {
         Span::styled("[LIVE]", Style::default().fg(Color::Green))
     } else {
