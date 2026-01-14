@@ -14,6 +14,15 @@ This spec defines custom tools for agent-driven end-to-end testing of Ralph Orch
 
 **Design Philosophy:** Test tools are thin wrappers over existing primitives. The EventBus observer pattern already records sessions; these tools provide structured access and assertion capabilities.
 
+### Key Design Patterns (Industry Research)
+
+| Pattern | Description | Application |
+|---------|-------------|-------------|
+| **Record/Replay (VCR)** | Capture real LLM interactions once, replay deterministically forever | Zero API costs in CI, reproducible tests |
+| **LLM-as-Judge** | Use an LLM to evaluate subjective criteria with rubrics | Code quality, tone, UX feel assessments |
+| **Trace-Based Testing** | Assert on execution traces, not just outcomes | Catch integration bugs invisible to traditional assertions |
+| **Multi-Level Evaluation** | Unit → Single-step → Full-turn → Multi-turn | Progressive confidence with cost optimization |
+
 ## Problem Statement
 
 To validate Ralph Orchestrator behavior at scale, we need automated E2E testing. However:
@@ -22,6 +31,8 @@ To validate Ralph Orchestrator behavior at scale, we need automated E2E testing.
 2. Testing an orchestrator that runs agents creates meta-complexity (agent testing agent)
 3. Session state spans multiple iterations—assertions need temporal awareness
 4. Backend adapters have different behaviors—tests must isolate adapter-specific concerns
+5. **LLM nondeterminism** makes tests flaky without record/replay patterns
+6. **Subjective criteria** (code quality, plan coherence) need LLM-as-judge evaluation
 
 ## Architecture
 
@@ -37,6 +48,9 @@ To validate Ralph Orchestrator behavior at scale, we need automated E2E testing.
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
 │  │  setup   │ │   run    │ │  assert  │ │  inspect │           │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
+│  │  record  │ │  replay  │ │ evaluate │ │  report  │           │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -46,8 +60,21 @@ To validate Ralph Orchestrator behavior at scale, we need automated E2E testing.
 │  │  fixtures/  │  │  session.   │  │  .agent/    │             │
 │  │             │  │  jsonl      │  │  scratchpad │             │
 │  └─────────────┘  └─────────────┘  └─────────────┘             │
+│  ┌─────────────┐  ┌─────────────┐                              │
+│  │ cassettes/  │  │  reports/   │   ← Record/replay storage    │
+│  │ (VCR tapes) │  │ (JUnit/TAP) │                              │
+│  └─────────────┘  └─────────────┘                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### Testing Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Mock** | Scripted responses, no network | Fast unit-style E2E, CI pipelines |
+| **Record** | Real LLM calls, save to cassette | Creating test fixtures |
+| **Replay** | Serve responses from cassette | Deterministic regression tests |
+| **Live** | Real LLM calls, no recording | Integration tests, debugging |
 
 ## Tool Definitions
 
@@ -146,6 +173,12 @@ Validates conditions against the test run results and recorded session.
 | `scratchpad_contains` | `pattern: string` | Assert scratchpad final state contains pattern |
 | `no_event` | `topic: string` | Assert event topic never occurred |
 | `duration` | `max_secs: int` | Assert total runtime within limit |
+| `trace_span_exists` | `name: string, attributes?: object` | Assert trace contains span with attributes |
+| `trace_span_sequence` | `names: string[]` | Assert spans occurred in order (trace-based testing) |
+| `hat_transition` | `from: string, to: string` | Assert hat changed from one to another |
+| `tool_called` | `tool: string, args_pattern?: string` | Assert agent called specific tool |
+| `snapshot_matches` | `snapshot_id: string, redactions?: object` | Assert current state matches snapshot (with redactions) |
+| `cost_within` | `max_dollars: float` | Assert cumulative cost within budget |
 
 **Returns:**
 
