@@ -1,34 +1,56 @@
 //! Main application loop for the TUI.
 
+use crate::input::{InputRouter, RouteResult};
 use crate::state::TuiState;
-use crate::widgets::{footer, header, status};
+use crate::widgets::{footer, header, terminal::TerminalWidget};
 use anyhow::Result;
 use crossterm::{
+    event::{self, Event, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use ralph_adapters::pty_handle::PtyHandle;
 use ratatui::{
+    Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
-    Terminal,
 };
 use std::io;
 use std::sync::{Arc, Mutex};
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 
 /// Main TUI application.
 pub struct App {
     state: Arc<Mutex<TuiState>>,
+    terminal_widget: Arc<Mutex<TerminalWidget>>,
+    input_router: InputRouter,
 }
 
 impl App {
-    /// Creates a new App with shared state.
-    pub fn new(state: Arc<Mutex<TuiState>>) -> Self {
-        Self { state }
+    /// Creates a new App with shared state and PTY handle.
+    pub fn new(state: Arc<Mutex<TuiState>>, pty_handle: PtyHandle) -> Self {
+        let terminal_widget = Arc::new(Mutex::new(TerminalWidget::new()));
+
+        // Spawn task to read PTY output and feed to terminal widget
+        let widget_clone = Arc::clone(&terminal_widget);
+        tokio::spawn(async move {
+            let PtyHandle { mut output_rx, .. } = pty_handle;
+            while let Some(bytes) = output_rx.recv().await {
+                if let Ok(mut widget) = widget_clone.lock() {
+                    widget.process(&bytes);
+                }
+            }
+        });
+
+        Self {
+            state,
+            terminal_widget,
+            input_router: InputRouter::new(),
+        }
     }
 
     /// Runs the TUI event loop.
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(mut self) -> Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
@@ -41,6 +63,7 @@ impl App {
             tokio::select! {
                 _ = tick.tick() => {
                     let state = self.state.lock().unwrap();
+                    let widget = self.terminal_widget.lock().unwrap();
                     terminal.draw(|f| {
                         let chunks = Layout::default()
                             .direction(Direction::Vertical)
@@ -52,9 +75,28 @@ impl App {
                             .split(f.area());
 
                         f.render_widget(header::render(&state), chunks[0]);
-                        f.render_widget(status::render(&state), chunks[1]);
+                        f.render_widget(tui_term::widget::PseudoTerminal::new(widget.parser().screen()), chunks[1]);
                         f.render_widget(footer::render(&state), chunks[2]);
                     })?;
+
+                    // Poll for keyboard events
+                    if event::poll(Duration::from_millis(0))? {
+                        if let Event::Key(key) = event::read()? {
+                            if key.kind == KeyEventKind::Press {
+                                match self.input_router.route_key(key) {
+                                    RouteResult::Forward(_) => {
+                                        // TODO: Forward to PTY in next step
+                                    }
+                                    RouteResult::Command(_) => {
+                                        // TODO: Handle commands in next step
+                                    }
+                                    RouteResult::Consumed => {
+                                        // Prefix consumed, wait for command
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 _ = tokio::signal::ctrl_c() => {
                     break;

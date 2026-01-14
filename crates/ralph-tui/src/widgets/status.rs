@@ -37,10 +37,7 @@ pub fn render(state: &TuiState) -> Paragraph<'static> {
             Span::raw(iteration.to_string()),
         ]),
         Line::from(""),
-        Line::from(vec![
-            Span::raw("    Loop Time:     "),
-            Span::raw(loop_time),
-        ]),
+        Line::from(vec![Span::raw("    Loop Time:     "), Span::raw(loop_time)]),
         Line::from(vec![
             Span::raw("    This Iteration: "),
             Span::raw(iter_time),

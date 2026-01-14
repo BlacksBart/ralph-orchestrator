@@ -19,7 +19,9 @@ pub fn render(state: &TuiState) -> Paragraph<'static> {
     } else {
         Span::styled(
             "◯ idle",
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::DIM),
         )
     };
 

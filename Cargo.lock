@@ -1234,6 +1234,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossterm 0.28.1",
+ "ralph-adapters",
  "ralph-core",
  "ralph-proto",
  "ratatui",

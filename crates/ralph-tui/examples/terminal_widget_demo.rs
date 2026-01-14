@@ -1,10 +1,10 @@
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
 use ralph_tui::TerminalWidget;
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::io;
 use tui_term::widget::PseudoTerminal;
 

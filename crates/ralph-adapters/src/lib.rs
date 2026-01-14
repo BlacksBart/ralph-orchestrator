@@ -27,7 +27,7 @@ mod auto_detect;
 mod cli_backend;
 mod cli_executor;
 mod pty_executor;
-mod pty_handle;
+pub mod pty_handle;
 
 pub use auto_detect::{detect_backend, detect_backend_default, is_backend_available, NoBackendError, DEFAULT_PRIORITY};
 pub use cli_backend::{CliBackend, CustomBackendError, PromptMode};
