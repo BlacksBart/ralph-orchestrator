@@ -102,86 +102,6 @@ If agent doesn't read/write scratchpad, state is lost. Usually works because Cla
 
 ---
 
-## 🟡 P1: Broken Preset - gap-analysis.yml
-
-**Problem:**
-The `presets/gap-analysis.yml` file uses YAML document separator `---` (line 186) to include a reference section at the end. The `serde_yaml` library doesn't support multi-document YAML parsing, causing a parse error.
-
-**Error:**
-```
-YAML parse error: deserializing from YAML containing more than one document is not supported
-```
-
-**Impact:**
-Users cannot use the gap-analysis preset at all. Running `ralph run --config presets/gap-analysis.yml` fails immediately.
-
-**Fix Options:**
-1. **Remove the separator**: Convert the reference section into a YAML comment block (`#` prefix)
-2. **Move to separate file**: Put the reference material in a `gap-analysis-reference.md` file
-
-**Location:** `presets/gap-analysis.yml:186`
-
----
-
-## 🟡 P1: Broken Preset - review.yml
-
-**Problem:**
-The `presets/review.yml` file uses YAML document separator `---` (line 98) to include a reference section. Same root cause as gap-analysis.yml.
-
-**Error:**
-```
-YAML parse error: deserializing from YAML containing more than one document is not supported
-```
-
-**Impact:**
-Users cannot use the review preset. Running `ralph run --config presets/review.yml` fails immediately.
-
-**Fix:**
-Same as gap-analysis.yml - convert reference section to comments or move to separate file.
-
-**Location:** `presets/review.yml:98`
-
----
-
-## 🟡 P1: Broken Preset - refactor.yml
-
-**Problem:**
-The `presets/refactor.yml` file has an ambiguous routing configuration. The trigger `refactor.done` is claimed by both:
-- `planner` hat (line 26)
-- `verifier` hat (line 107)
-
-The config validation correctly rejects this, but the preset ships broken.
-
-**Error:**
-```
-Ambiguous routing: trigger 'refactor.done' is claimed by both 'planner' and 'verifier'
-```
-
-**Impact:**
-Users cannot use the refactor preset. The validation catches this correctly, so it fails safely (no runtime confusion).
-
-**Expected Behavior:**
-Looking at the intended workflow:
-```
-refactor.task → [refactorer] → refactor.done → [verifier] → verify.passed → [planner]
-```
-
-The verifier should own `refactor.done`, and planner should trigger on `verify.passed` and `verify.failed` instead.
-
-**Fix:**
-Update `presets/refactor.yml` planner triggers:
-```yaml
-# Current (broken):
-triggers: ["task.start", "task.resume", "refactor.done", "refactor.blocked", "verify.failed"]
-
-# Fixed:
-triggers: ["task.start", "task.resume", "verify.passed", "verify.failed", "refactor.blocked"]
-```
-
-**Location:** `presets/refactor.yml:26`
-
----
-
 ## 🟢 P2: Hat Display Order Is Random
 
 **Problem:**
@@ -210,48 +130,26 @@ Minor UX confusion. Users may expect to see hats in the order they appear in the
 
 ---
 
-## 🟡 P1: Broken ralph.yml in Repo Root
-
-**Problem:**
-The default `ralph.yml` configuration file in the repository root uses v1-style flat configuration that doesn't match the v2 nested schema. Specifically:
-- `adapters.claude.tool_permissions` is a map (`allow_all: true`) but the schema expects a sequence (`["read", "write"]`)
-- `adapters.acp.tool_permissions` contains undefined fields (`agent_command`, `agent_args`, `permission_mode`, `permission_allowlist`)
-
-**Error:**
-```
-YAML parse error: adapters.claude.tool_permissions: invalid type: map, expected a sequence at line 49 column 7
-```
-
-**Impact:**
-Users who clone the repo and try to use the default config (`ralph run`) get a parse error. The fallback (no config file) works, but having a broken default config is confusing.
-
-**Current (broken):**
-```yaml
-adapters:
-  claude:
-    tool_permissions:         # Tool permissions for Claude
-      allow_all: true         # Map - causes parse error
-```
-
-**Expected:**
-```yaml
-adapters:
-  claude:
-    tool_permissions: ["read", "write"]  # Sequence - matches schema
-    # Or just remove the field (it's a dropped feature anyway)
-```
-
-**Fix Options:**
-1. **Remove tool_permissions entirely** - it's a dropped feature per the comments in config.rs
-2. **Update to sequence format** - if keeping for documentation purposes
-
-**Location:** `ralph.yml:48-49`, `ralph.yml:91-95`
-
----
-
 ## Resolved Issues
 
 _(Move issues here when fixed, then delete after next release)_
+
+### ✅ P1: Broken Presets (Fixed 2026-01-14)
+
+**Issues Fixed:**
+- `presets/gap-analysis.yml` - Multi-document YAML parse error (converted reference section to comments)
+- `presets/review.yml` - Multi-document YAML parse error (converted reference section to comments)
+- `presets/refactor.yml` - Ambiguous routing (`refactor.done` claimed by both planner and verifier)
+
+**Solution:**
+- Gap-analysis and review presets: Converted `---` document separator and reference section to YAML comments
+- Refactor preset: Changed planner triggers from `refactor.done` to `verify.passed` so verifier owns `refactor.done`
+
+### ✅ P1: Broken ralph.yml in Repo Root (Fixed 2026-01-14)
+
+**Problem:** Default config had outdated `tool_permissions` schema causing parse errors.
+
+**Solution:** Removed deprecated `tool_permissions` field from adapter configs.
 
 ### ✅ P0: Backpressure Not Enforced (Fixed 2026-01-13)
 

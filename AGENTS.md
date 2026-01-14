@@ -43,12 +43,6 @@ Trust agent self-correction and self-prioritization across iterations. Human rol
 - ❌ Fighting nondeterminism (embrace iteration)
 - ❌ Scoping work at task selection time (scope at plan creation instead)
 
-## Virtual environment
-- Use the project `.venv` for running Python commands and tests.
-- If it does not exist, create it with `uv venv` from the repo root.
-- Activate it before running commands: `source .venv/bin/activate`.
-- When done, exit the environment with `deactivate`.
-
 ## Specs
 
 - Create all specs in `<repo-root>/specs/`
@@ -169,3 +163,7 @@ kiro-cli chat --no-interactive --trust-all-tools "Your prompt here"
 | Project Config | `.kiro/` (in project root) |
 | Global Config | `~/.kiro/` |
 | Logs | `$TMPDIR/kiro-log` |
+
+
+# IMPORTANT
+- You MUST always run ralph loops in a temp directory so you dont pollute the workspace
