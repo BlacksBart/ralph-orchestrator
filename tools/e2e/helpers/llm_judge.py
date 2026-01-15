@@ -67,6 +67,112 @@ Respond with ONLY valid JSON (no markdown, no extra text):
 """
 
 
+# Validation criteria for iteration counter in TUI header
+ITERATION_COUNTER_CRITERIA = """
+Analyze this TUI capture and validate the iteration display:
+
+1. **Iteration Display**: Header shows iteration in format [iter N]
+   - Look for text like "[iter 1]", "[iter 2]", "[iter 3]", etc.
+   - Extract the iteration number N
+   - Expected iteration: {expected_iteration}
+   - Pass if the displayed iteration matches the expected value
+
+2. **Elapsed Time**: Header shows elapsed time
+   - Look for time in format MM:SS (e.g., "00:05", "01:23")
+   - Time should be visible and non-zero if iteration > 1
+   - Pass if any time format is visible
+
+3. **Mode Indicator**: Shows current mode
+   - Look for: "auto", "interactive", or mode indicator
+   - Should be visible in the header area
+   - Pass if ANY mode indication is present
+
+4. **No Visual Artifacts**: TUI renders properly
+   - Content should be readable
+   - ANSI escape codes are expected - they are NOT errors
+   - Pass if text is generally readable
+
+Respond with ONLY valid JSON (no markdown, no extra text):
+{{
+  "pass": true/false,
+  "iteration_found": <number or null>,
+  "elapsed_time": "<time string or null>",
+  "checks": {{
+    "iteration_correct": {{"pass": true/false, "reason": "explanation"}},
+    "elapsed_visible": {{"pass": true/false, "reason": "explanation"}},
+    "mode_visible": {{"pass": true/false, "reason": "explanation"}},
+    "no_artifacts": {{"pass": true/false, "reason": "explanation"}}
+  }},
+  "overall_reason": "Summary of validation result"
+}}
+"""
+
+
+# Validation criteria for max iterations termination
+MAX_ITERATIONS_CRITERIA = """
+Analyze this TUI capture from a terminated Ralph session:
+
+1. **Final Iteration**: Shows the maximum iteration reached
+   - Look for [iter N] where N is the expected max
+   - Expected max iterations: {max_iterations}
+   - Pass if final iteration shows N or N-1 (may capture during transition)
+
+2. **Termination Indication**: Shows loop terminated
+   - Look for: "max iterations", "limit reached", "terminated", "Loop terminated"
+   - Or shell prompt returned ($ or >)
+   - Pass if ANY termination indication is present
+
+3. **No Active Processing**: Session has stopped
+   - Activity indicator shows stopped or no active indicator visible
+   - No "thinking" or "working" indicators active
+   - Pass if session appears inactive
+
+Respond with ONLY valid JSON (no markdown, no extra text):
+{{
+  "pass": true/false,
+  "final_iteration": <number or null>,
+  "checks": {{
+    "correct_final_iteration": {{"pass": true/false, "reason": "explanation"}},
+    "termination_shown": {{"pass": true/false, "reason": "explanation"}},
+    "session_inactive": {{"pass": true/false, "reason": "explanation"}}
+  }},
+  "overall_reason": "Summary of validation result"
+}}
+"""
+
+
+# Validation criteria for successful completion
+COMPLETION_CRITERIA = """
+Analyze this TUI capture from a completed Ralph session:
+
+1. **Completion State**: Session completed successfully
+   - Look for: "completed", "done", "finished", "success", shell prompt return
+   - Should NOT show error states or failure indicators
+   - Pass if completion is indicated
+
+2. **No Error States**: No critical errors shown
+   - No "error", "failed", "panic", "crash" messages
+   - ANSI escape codes are expected - they are NOT errors
+   - Pass if no critical error messages visible
+
+3. **Content Present**: Meaningful output was captured
+   - Not just empty lines or whitespace
+   - Some actual content visible
+   - Pass if content exists
+
+Respond with ONLY valid JSON (no markdown, no extra text):
+{{
+  "pass": true/false,
+  "checks": {{
+    "completion_shown": {{"pass": true/false, "reason": "explanation"}},
+    "no_errors": {{"pass": true/false, "reason": "explanation"}},
+    "content_present": {{"pass": true/false, "reason": "explanation"}}
+  }},
+  "overall_reason": "Summary of validation result"
+}}
+"""
+
+
 class LLMJudge:
     """Validates TUI output using Claude as an LLM-as-judge.
 

@@ -3,6 +3,7 @@
 import asyncio
 import os
 import uuid
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import AsyncGenerator
@@ -10,7 +11,7 @@ from typing import AsyncGenerator
 import pytest
 import pytest_asyncio
 
-from .helpers import TmuxSession, FreezeCapture, LLMJudge
+from .helpers import TmuxSession, FreezeCapture, LLMJudge, IterationCapture
 
 
 # Configure pytest-asyncio
@@ -30,6 +31,9 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "requires_claude: mark test as requiring Claude Agent SDK"
+    )
+    config.addinivalue_line(
+        "markers", "slow: mark test as slow-running (requires live Ralph)"
     )
 
 
@@ -139,3 +143,110 @@ orchestrator:
   max_iterations: 1
 """)
     return test_config
+
+
+# ============================================================================
+# Iteration Lifecycle Test Fixtures
+# ============================================================================
+
+
+@pytest.fixture(scope="session")
+def iteration_evidence_base_dir(project_root: Path) -> Path:
+    """Get the base evidence directory for iteration lifecycle tests."""
+    evidence_dir = project_root / "tui-validation" / "iteration-lifecycle"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    return evidence_dir
+
+
+@pytest.fixture
+def iteration_evidence_dir(iteration_evidence_base_dir: Path) -> Path:
+    """Get a timestamped evidence directory for this test run."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = iteration_evidence_base_dir / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+
+@pytest_asyncio.fixture
+async def iteration_capture(tmux_session: TmuxSession) -> IterationCapture:
+    """Create an IterationCapture instance for the test.
+
+    Requires an active tmux session.
+    """
+    return IterationCapture(session=tmux_session, poll_interval=0.5)
+
+
+@pytest.fixture
+def iteration_freeze_capture(iteration_evidence_dir: Path) -> FreezeCapture:
+    """Create a FreezeCapture instance for iteration tests.
+
+    Outputs are saved to the iteration evidence directory.
+    """
+    if not FreezeCapture.is_available():
+        pytest.skip("freeze CLI not available")
+
+    return FreezeCapture(output_dir=iteration_evidence_dir)
+
+
+def create_iteration_test_config(
+    project_root: Path,
+    max_iterations: int = 100,
+    max_runtime_seconds: int = 300,
+    idle_timeout_secs: int = 30,
+) -> Path:
+    """Create a Ralph config file for iteration testing.
+
+    Args:
+        project_root: Project root directory
+        max_iterations: Maximum iterations before termination
+        max_runtime_seconds: Maximum runtime in seconds
+        idle_timeout_secs: Idle timeout in seconds
+
+    Returns:
+        Path to the created config file
+    """
+    config_content = f"""
+cli:
+  backend: claude
+  default_mode: autonomous
+  idle_timeout_secs: {idle_timeout_secs}
+
+orchestrator:
+  max_iterations: {max_iterations}
+  max_runtime_seconds: {max_runtime_seconds}
+  max_consecutive_failures: 5
+"""
+    config_path = project_root / f"ralph.iteration-test.yml"
+    config_path.write_text(config_content)
+    return config_path
+
+
+@pytest.fixture
+def iteration_config_factory(project_root: Path):
+    """Factory fixture for creating iteration test configs.
+
+    Usage:
+        config_path = iteration_config_factory(max_iterations=3)
+    """
+    created_configs = []
+
+    def _factory(
+        max_iterations: int = 100,
+        max_runtime_seconds: int = 300,
+        idle_timeout_secs: int = 30,
+    ) -> Path:
+        config_path = create_iteration_test_config(
+            project_root=project_root,
+            max_iterations=max_iterations,
+            max_runtime_seconds=max_runtime_seconds,
+            idle_timeout_secs=idle_timeout_secs,
+        )
+        created_configs.append(config_path)
+        return config_path
+
+    yield _factory
+
+    # Cleanup created configs
+    for config_path in created_configs:
+        if config_path.exists():
+            config_path.unlink()
