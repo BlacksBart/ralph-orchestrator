@@ -64,7 +64,6 @@ nav:
     - guide/kiro-migration.md
     - guide/agents.md
     - guide/prompts.md
-    - guide/checkpointing.md
     - guide/cost-management.md
   - Deployment:
     - deployment/docker.md

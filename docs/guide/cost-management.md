@@ -455,5 +455,4 @@ python ralph_orchestrator.py && \
 
 - Review [Agent Selection](agents.md) for cost-effective choices
 - Optimize [Prompts](prompts.md) for efficiency
-- Configure [Checkpointing](checkpointing.md) to save progress
 - Explore [Examples](../examples/index.md) for cost-optimized patterns

@@ -505,5 +505,4 @@ See [Migration Guide](../migration/v2-hatless-ralph.md) for upgrading from v1.x.
 - Learn about [AI Agents](agents.md) and their capabilities
 - Understand [Prompt Engineering](prompts.md) for better results
 - Explore [Cost Management](cost-management.md) strategies
-- Set up [Checkpointing](checkpointing.md) for recovery
 - Read the [v2.0 Migration Guide](../migration/v2-hatless-ralph.md)

@@ -521,6 +521,5 @@ Include input/output examples and edge cases
 ## Next Steps
 
 - Explore [Cost Management](cost-management.md) for efficient prompts
-- Learn about [Checkpointing](checkpointing.md) for long tasks
 - Review [Agent Selection](agents.md) for optimal results
 - See [Examples](../examples/index.md) for real-world prompts

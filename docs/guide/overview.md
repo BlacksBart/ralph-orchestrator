@@ -309,4 +309,3 @@ See the [Quick Start](../quick-start.md) guide for detailed instructions.
 - Understand [Agent](agents.md) selection and capabilities
 - Master [Prompt](prompts.md) engineering for best results
 - Explore [Cost Management](cost-management.md) strategies
-- Set up [Checkpointing](checkpointing.md) for recovery

@@ -774,6 +774,5 @@ Balance quality with budget:
 
 - Master [Prompt Engineering](prompts.md) for better results
 - Learn about [Cost Management](cost-management.md)
-- Understand [Checkpointing](checkpointing.md) strategies
 - Explore [Configuration](configuration.md) options
 - Read the [v2.0 Migration Guide](../migration/v2-hatless-ralph.md)

@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Migration
 
-See [Migration Guide](docs/migration/v2-hatless-ralph.md) for upgrading from v1.x.
+See [Migration Guide](migration/v2-hatless-ralph.md) for upgrading from v1.x.
 
 ## [1.2.3] - 2026-01-12
 
