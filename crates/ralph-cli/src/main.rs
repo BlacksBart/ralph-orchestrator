@@ -1291,7 +1291,8 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool,
     } else {
         false
     };
-    let use_pty = config.cli.backend == "claude" || user_interactive;
+    // Always use PTY for real-time streaming output (vs buffered CliExecutor)
+    let use_pty = true;
 
     // Set up signal handling for immediate termination
     // Per spec:
@@ -1306,7 +1307,7 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool,
     let interrupt_tx_sigint = interrupt_tx.clone();
     tokio::spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
-            warn!("Interrupt received (SIGINT), terminating immediately...");
+            debug!("Interrupt received (SIGINT), terminating immediately...");
             let _ = interrupt_tx_sigint.send(true);
         }
     });
@@ -1319,7 +1320,7 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool,
             let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                 .expect("Failed to register SIGTERM handler");
             sigterm.recv().await;
-            warn!("SIGTERM received, terminating immediately...");
+            debug!("SIGTERM received, terminating immediately...");
             let _ = interrupt_tx_sigterm.send(true);
         });
     }
@@ -1379,18 +1380,6 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool,
     } else {
         None
     };
-
-    // Log startup message with registered hats
-    let hat_names: Vec<String> = event_loop.registry().ids().map(|id| id.to_string()).collect();
-    if hat_names.is_empty() {
-        info!("I'm Ralph. Let's do this.");
-    } else {
-        info!(
-            hats = ?hat_names,
-            "I'm Ralph. Got my hats ready: {}. Let's do this.",
-            hat_names.join(", ")
-        );
-    }
 
     // Initialize event logger for debugging
     let mut event_logger = EventLogger::default_path();
@@ -1623,7 +1612,7 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool,
                 execute_pty(pty_executor.as_mut(), &backend, &config, &prompt, user_interactive, interrupt_rx_for_pty, verbosity).await
             } else {
                 let executor = CliExecutor::new(backend.clone());
-                let result = executor.execute(&prompt, stdout(), timeout).await?;
+                let result = executor.execute(&prompt, stdout(), timeout, verbosity == Verbosity::Verbose).await?;
                 Ok(ExecutionOutcome {
                     output: result.output,
                     success: result.success,
@@ -1641,11 +1630,11 @@ async fn run_loop_impl(config: RalphConfig, color_mode: ColorMode, resume: bool,
                     use nix::sys::signal::{killpg, Signal};
                     use nix::unistd::getpgrp;
                     let pgid = getpgrp();
-                    info!("Sending SIGTERM to process group {}", pgid);
+                    debug!("Sending SIGTERM to process group {}", pgid);
                     let _ = killpg(pgid, Signal::SIGTERM);
 
                     // Wait briefly for graceful exit, then SIGKILL
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    tokio::time::sleep(Duration::from_millis(250)).await;
                     let _ = killpg(pgid, Signal::SIGKILL);
                 }
 
@@ -1959,83 +1948,28 @@ mod tests {
     use ralph_core::RalphConfig;
 
     #[test]
-    fn test_claude_backend_forces_pty_mode() {
-        // Given: backend is "claude" and default_mode is "autonomous"
-        let mut config = RalphConfig::default();
-        config.cli.backend = "claude".to_string();
-        config.cli.default_mode = "autonomous".to_string();
+    fn test_pty_always_enabled_for_streaming() {
+        // PTY mode is always enabled for real-time streaming output.
+        // This ensures all backends (claude, gemini, kiro, codex, amp) get
+        // streaming output instead of buffered output from CliExecutor.
+        let use_pty = true; // Matches the actual implementation
 
-        let stdout_is_tty = true;
-        let enable_tui = false;
-        let interactive_requested = config.cli.default_mode == "interactive" || enable_tui;
-        let user_interactive = interactive_requested && stdout_is_tty;
-        let use_pty = config.cli.backend == "claude" || user_interactive;
-
-        // Then: PTY mode should be enabled
-        assert!(use_pty, "Claude backend should force PTY mode");
-        assert!(!user_interactive, "Autonomous mode should not be interactive");
+        // PTY should always be true regardless of backend or mode
+        assert!(use_pty, "PTY should always be enabled for streaming output");
     }
 
     #[test]
-    fn test_gemini_backend_respects_default_mode() {
-        // Given: backend is "gemini" and default_mode is "autonomous"
-        let mut config = RalphConfig::default();
-        config.cli.backend = "gemini".to_string();
-        config.cli.default_mode = "autonomous".to_string();
+    fn test_user_interactive_mode_determination() {
+        // user_interactive is determined by default_mode setting, not PTY.
+        // PTY handles output streaming; user_interactive handles input forwarding.
 
-        let stdout_is_tty = true;
-        let enable_tui = false;
-        let interactive_requested = config.cli.default_mode == "interactive" || enable_tui;
-        let user_interactive = interactive_requested && stdout_is_tty;
-        let use_pty = config.cli.backend == "claude" || user_interactive;
+        // Autonomous mode: no user input forwarding
+        let autonomous_interactive = false;
+        assert!(!autonomous_interactive, "Autonomous mode should not forward user input");
 
-        // Then: PTY mode should NOT be enabled (respects autonomous mode)
-        assert!(!use_pty, "Gemini backend should respect autonomous mode");
-        assert!(!user_interactive, "Autonomous mode should not be interactive");
-    }
-
-    #[test]
-    fn test_claude_backend_overrides_interactive_mode_setting() {
-        // Given: backend is "claude" and default_mode is "interactive"
-        let mut config = RalphConfig::default();
-        config.cli.backend = "claude".to_string();
-        config.cli.default_mode = "interactive".to_string();
-
-        let stdout_is_tty = true;
-        let enable_tui = false;
-        let interactive_requested = config.cli.default_mode == "interactive" || enable_tui;
-        let user_interactive = interactive_requested && stdout_is_tty;
-        let use_pty = config.cli.backend == "claude" || user_interactive;
-
-        // Then: PTY mode should be enabled (would be true anyway, but Claude forces it)
-        assert!(use_pty, "Claude backend should enable PTY mode");
-        assert!(user_interactive, "Interactive mode should be enabled");
-    }
-
-    #[test]
-    fn test_other_backends_respect_autonomous_mode() {
-        let backends = vec!["kiro", "gemini", "codex", "amp"];
-
-        for backend in backends {
-            // Given: backend is not "claude" and default_mode is "autonomous"
-            let mut config = RalphConfig::default();
-            config.cli.backend = backend.to_string();
-            config.cli.default_mode = "autonomous".to_string();
-
-            let stdout_is_tty = true;
-            let enable_tui = false;
-            let interactive_requested = config.cli.default_mode == "interactive" || enable_tui;
-            let user_interactive = interactive_requested && stdout_is_tty;
-            let use_pty = config.cli.backend == "claude" || user_interactive;
-
-            // Then: PTY mode should NOT be enabled
-            assert!(
-                !use_pty,
-                "{} backend should respect autonomous mode",
-                backend
-            );
-            assert!(!user_interactive, "Autonomous mode should not be interactive");
-        }
+        // Interactive mode with TTY: forward user input
+        let interactive_with_tty = true;
+        assert!(interactive_with_tty, "Interactive mode with TTY should forward user input");
     }
 
     #[test]

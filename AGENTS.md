@@ -10,7 +10,7 @@
 
 3. **The Plan Is Disposable** — Regeneration costs one planning loop. Cheap. Never fight to save a plan.
 
-4. **Disk Is State, Git Is Memory** — `IMPLEMENTATION_PLAN.md` is the handoff mechanism. No sophisticated coordination needed.
+4. **Disk Is State, Git Is Memory** — `.agent/scratchpad.md` is the handoff mechanism. No sophisticated coordination needed.
 
 5. **Steer With Signals, Not Scripts** — The codebase is the instruction manual. When Ralph fails a specific way, add a sign for next time. The prompts you start with won't be the prompts you end with.
 

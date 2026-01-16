@@ -480,7 +480,7 @@ async fn run_task_loop(
             // Wrap output buffer with CliCapture to record terminal output
             let mut output_buf = Vec::new();
             let mut capture = CliCapture::new(&mut output_buf, true);
-            let result = executor.execute(&prompt, &mut capture, timeout).await?;
+            let result = executor.execute(&prompt, &mut capture, timeout, false).await?;
 
             // Extract and record UX events
             let ux_events = capture.take_captures();
@@ -491,7 +491,7 @@ async fn run_task_loop(
             result
         } else {
             let mut output_buf = Vec::new();
-            executor.execute(&prompt, &mut output_buf, timeout).await?
+            executor.execute(&prompt, &mut output_buf, timeout, false).await?
         };
 
         // Process output

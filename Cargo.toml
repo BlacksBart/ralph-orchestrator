@@ -16,8 +16,8 @@ exclude = [
 edition = "2024"
 version = "0.1.0"
 license = "MIT"
-repository = "https://github.com/hesreallyhim/ralph-orchestrator"
-homepage = "https://github.com/hesreallyhim/ralph-orchestrator"
+repository = "https://github.com/mikeyobrien/ralph-orchestrator"
+homepage = "https://github.com/mikeyobrien/ralph-orchestrator"
 description = "Ralph Orchestrator - Multi-agent orchestration framework"
 
 [workspace.lints.rust]

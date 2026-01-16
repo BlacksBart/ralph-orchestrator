@@ -45,11 +45,15 @@ impl CliExecutor {
     /// Output is streamed line-by-line to the writer while being accumulated
     /// for the return value. If `timeout` is provided and the execution exceeds
     /// it, the process receives SIGTERM and the result indicates timeout.
+    ///
+    /// When `verbose` is true, stderr output is also written to the output writer
+    /// with a `[stderr]` prefix. When false, stderr is captured but not displayed.
     pub async fn execute<W: Write + Send>(
         &self,
         prompt: &str,
         mut output_writer: W,
         timeout: Option<Duration>,
+        verbose: bool,
     ) -> std::io::Result<ExecutionResult> {
         // Note: _temp_file is kept alive for the duration of this function scope.
         // For large prompts (>7000 chars), Claude reads from the temp file.
@@ -128,9 +132,11 @@ impl CliExecutor {
                 writeln!(output_writer, "{line}")?;
             }
 
-            // Write stderr lines (prefixed)
-            for line in &stderr_lines {
-                writeln!(output_writer, "[stderr] {line}")?;
+            // Write stderr lines (prefixed) only in verbose mode
+            if verbose {
+                for line in &stderr_lines {
+                    writeln!(output_writer, "[stderr] {line}")?;
+                }
             }
 
             output_writer.flush()?;
@@ -207,8 +213,9 @@ impl CliExecutor {
         timeout: Option<Duration>,
     ) -> std::io::Result<ExecutionResult> {
         // Use a sink that discards output for non-streaming execution
+        // verbose=false since output is being discarded anyway
         let sink = std::io::sink();
-        self.execute(prompt, sink, timeout).await
+        self.execute(prompt, sink, timeout, false).await
     }
 }
 
@@ -230,7 +237,7 @@ mod tests {
         let executor = CliExecutor::new(backend);
         let mut output = Vec::new();
 
-        let result = executor.execute("hello world", &mut output, None).await.unwrap();
+        let result = executor.execute("hello world", &mut output, None, true).await.unwrap();
 
         assert!(result.success);
         assert!(!result.timed_out);

@@ -187,12 +187,14 @@ Do not plan or analyze — delegate now.
 Update `{scratchpad}` with prioritized tasks.
 
 ### 2. DELEGATE
-Publish ONE event to hand off to specialized hats.
+You have one job. Publish ONE event to hand off to specialized hats. Do
+NOT do any work.
 
 **CRITICAL: STOP after publishing the event.** A new iteration will start
 with fresh context to handle the work. Do NOT continue working in this
 iteration — let the next iteration handle the event with the appropriate
-hat persona.
+hat persona. By doing the work now, you won't have the specialty to do
+an even better job.
 
 ",
                 scratchpad = self.core.scratchpad

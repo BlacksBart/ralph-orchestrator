@@ -9,11 +9,9 @@ A hat-based multi-agent orchestration framework that keeps AI agents in a loop u
 
 > "Me fail English? That's unpossible!" - Ralph Wiggum
 
-**Alpha Notice:** Ralph v2 is under active development. It works today, but expect rough edges and breaking changes between releases.
+**Alpha Notice:** Ralph Orchestrator is under active development. It works today, but expect rough edges and breaking changes between releases.
 
-### Why Rust? The v1 → v2 Story
-
-Ralph v1 ([original Python implementation](https://github.com/mikeyobrien/ralph-orchestrator)) proved the concept: a simple loop that keeps AI agents working until the job is done. But as we pushed into multi-agent orchestration with hats, events, and real-time TUI monitoring, Python's async model became a liability. PTY management, signal handling, and subprocess coordination demanded the kind of control that Rust provides natively. The rewrite isn't about performance—it's about reliability. Rust's ownership model eliminated entire classes of bugs around process lifecycle and shared state. The result: a smaller binary, zero runtime dependencies, and an architecture that can grow without accumulating async footguns.
+v1.0.0 was ralphed into existence with little oversight and guidance. v2.0.0 is a simpler, focused implementation. 
 
 ## Table of Contents
 
@@ -215,16 +213,6 @@ hats:
 
 Presets are pre-configured workflows for common development patterns.
 
-### Minimal Presets
-
-Backend-specific minimal configurations:
-
-| Preset | Backend | Description |
-|--------|---------|-------------|
-| `minimal/claude` | Claude | Minimal Claude Code configuration |
-| `minimal/kiro` | Kiro | Minimal Kiro CLI configuration |
-| `minimal/codex` | Codex | Minimal Codex configuration |
-
 ### Development Workflows
 
 | Preset | Pattern | Description |
@@ -393,7 +381,7 @@ If evidence is missing or checks failed, Ralph synthesizes `build.blocked` inste
 
 ## Architecture
 
-Ralph is organized as a Cargo workspace with five crates:
+Ralph is organized as a Cargo workspace with six crates:
 
 ```
                     ┌──────────────┐

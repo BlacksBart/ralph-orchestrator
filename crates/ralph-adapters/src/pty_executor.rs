@@ -372,7 +372,7 @@ impl PtyExecutor {
                 // Check for interrupt signal from event loop
                 _ = interrupt_rx.changed() => {
                     if *interrupt_rx.borrow() {
-                        info!("Interrupt received in observe mode, terminating");
+                        debug!("Interrupt received in observe mode, terminating");
                         termination = TerminationType::UserInterrupt;
                         should_terminate.store(true, Ordering::SeqCst);
                         let _ = self.terminate_child(&mut child, true).await;
@@ -593,7 +593,7 @@ impl PtyExecutor {
             tokio::select! {
                 _ = interrupt_rx.changed() => {
                     if *interrupt_rx.borrow() {
-                        info!("Interrupt received in streaming observe mode, terminating");
+                        debug!("Interrupt received in streaming observe mode, terminating");
                         termination = TerminationType::UserInterrupt;
                         should_terminate.store(true, Ordering::SeqCst);
                         let _ = self.terminate_child(&mut child, true).await;
@@ -1069,7 +1069,7 @@ impl PtyExecutor {
                 // Interrupt signal from event loop
                 _ = interrupt_rx.changed() => {
                     if *interrupt_rx.borrow() {
-                        info!("Interrupt received in interactive mode, terminating");
+                        debug!("Interrupt received in interactive mode, terminating");
                         termination = TerminationType::UserInterrupt;
                         should_terminate.store(true, Ordering::SeqCst);
                         self.terminate_child(&mut child, true).await?;
@@ -1177,7 +1177,7 @@ impl PtyExecutor {
             tokio::select! {
                 _ = interrupt_rx.changed() => {
                     if *interrupt_rx.borrow() {
-                        info!("Interrupt received while waiting for child exit");
+                        debug!("Interrupt received while waiting for child exit");
                         return Ok(None);
                     }
                 }
