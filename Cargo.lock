@@ -1313,6 +1313,7 @@ dependencies = [
  "nix 0.29.0",
  "ralph-adapters",
  "ralph-core",
+ "ralph-mcp",
  "ralph-proto",
  "ralph-tui",
  "regex",
