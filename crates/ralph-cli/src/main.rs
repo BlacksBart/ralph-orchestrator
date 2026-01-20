@@ -208,7 +208,9 @@ enum Commands {
     /// Run the orchestration loop (default if no subcommand given)
     Run(RunArgs),
 
-    /// Resume a previously interrupted loop from existing scratchpad
+    /// DEPRECATED: Use `ralph run --continue` instead.
+    /// Resume a previously interrupted loop from existing scratchpad.
+    #[command(hide = true)]
     Resume(ResumeArgs),
 
     /// View event history for debugging
@@ -274,6 +276,12 @@ struct RunArgs {
     /// Dry run - show what would be executed without running
     #[arg(long)]
     dry_run: bool,
+
+    /// Continue from existing scratchpad (resume interrupted loop).
+    /// Use this when a previous run was interrupted and you want to
+    /// continue from where it left off.
+    #[arg(long = "continue")]
+    continue_mode: bool,
 
     // ─────────────────────────────────────────────────────────────────────────
     // Execution Mode Options
@@ -490,6 +498,7 @@ async fn main() -> Result<()> {
                 max_iterations: None,
                 completion_promise: None,
                 dry_run: false,
+                continue_mode: false,
                 tui: false,
                 autonomous: false,
                 idle_timeout: None,
@@ -519,6 +528,23 @@ async fn run_command(
 
     // Normalize v1 flat fields into v2 nested structure
     config.normalize();
+
+    // Handle --continue mode: check scratchpad exists before proceeding
+    let resume = args.continue_mode;
+    if resume {
+        let scratchpad_path = std::path::Path::new(&config.core.scratchpad);
+        if !scratchpad_path.exists() {
+            anyhow::bail!(
+                "Cannot continue: scratchpad not found at '{}'. \
+                 Start a fresh run with `ralph run`.",
+                config.core.scratchpad
+            );
+        }
+        info!(
+            "Found existing scratchpad at '{}', continuing from previous state",
+            config.core.scratchpad
+        );
+    }
 
     // Apply CLI overrides (after normalization so they take final precedence)
     // Per spec: CLI -p and -P are mutually exclusive (enforced by clap)
@@ -623,9 +649,10 @@ async fn run_command(
     // Run the orchestration loop and exit with proper exit code
     let enable_tui = args.tui;
     let verbosity = Verbosity::resolve(verbose || args.verbose, args.quiet);
-    let reason = run_loop(
+    let reason = run_loop_impl(
         config,
         color_mode,
+        resume,
         enable_tui,
         verbosity,
         args.record_session,
@@ -643,8 +670,10 @@ async fn run_command(
 
 /// Resume a previously interrupted loop from existing scratchpad.
 ///
+/// DEPRECATED: Use `ralph run --continue` instead.
+///
 /// Per spec: "When loop terminates due to safeguard (not completion promise),
-/// user can run `ralph resume` to restart reading existing scratchpad,
+/// user can run `ralph run --continue` to restart reading existing scratchpad,
 /// continuing from where it left off."
 async fn resume_command(
     config_path: PathBuf,
@@ -652,6 +681,13 @@ async fn resume_command(
     color_mode: ColorMode,
     args: ResumeArgs,
 ) -> Result<()> {
+    // Show deprecation warning
+    eprintln!(
+        "{}warning:{} `ralph resume` is deprecated. Use `ralph run --continue` instead.",
+        colors::YELLOW,
+        colors::RESET
+    );
+
     // Load configuration
     let mut config = if config_path.exists() {
         RalphConfig::from_file(&config_path)
@@ -667,12 +703,16 @@ async fn resume_command(
     let scratchpad_path = std::path::Path::new(&config.core.scratchpad);
     if !scratchpad_path.exists() {
         anyhow::bail!(
-            "Cannot resume: scratchpad not found at '{}'. Use `ralph run` to start a new loop.",
+            "Cannot continue: scratchpad not found at '{}'. \
+             Start a fresh run with `ralph run`.",
             config.core.scratchpad
         );
     }
 
-    info!("Found existing scratchpad at '{}'", config.core.scratchpad);
+    info!(
+        "Found existing scratchpad at '{}', continuing from previous state",
+        config.core.scratchpad
+    );
 
     // Apply CLI overrides
     if let Some(max_iter) = args.max_iterations {
@@ -1426,25 +1466,7 @@ fn resolve_prompt_content(event_loop_config: &ralph_core::EventLoopConfig) -> Re
     )
 }
 
-async fn run_loop(
-    config: RalphConfig,
-    color_mode: ColorMode,
-    enable_tui: bool,
-    verbosity: Verbosity,
-    record_session: Option<PathBuf>,
-) -> Result<TerminationReason> {
-    run_loop_impl(
-        config,
-        color_mode,
-        false,
-        enable_tui,
-        verbosity,
-        record_session,
-    )
-    .await
-}
-
-/// Core loop implementation supporting both fresh start and resume modes.
+/// Core loop implementation supporting both fresh start and continue modes.
 ///
 /// `resume`: If true, publishes `task.resume` instead of `task.start`,
 /// signaling the planner to read existing scratchpad rather than doing fresh gap analysis.
