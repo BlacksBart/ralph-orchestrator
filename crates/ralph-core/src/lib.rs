@@ -19,6 +19,7 @@ mod event_reader;
 mod hat_registry;
 mod hatless_ralph;
 mod instructions;
+mod memory;
 mod session_player;
 mod session_recorder;
 mod summary_writer;
@@ -30,7 +31,8 @@ pub mod workspace;
 
 pub use cli_capture::{CliCapture, CliCapturePair};
 pub use config::{
-    CliConfig, CoreConfig, EventLoopConfig, EventMetadata, HatBackend, HatConfig, RalphConfig,
+    CliConfig, CoreConfig, EventLoopConfig, EventMetadata, HatBackend, HatConfig, InjectMode,
+    MemoriesConfig, MemoriesFilter, RalphConfig,
 };
 pub use event_logger::{EventHistory, EventLogger, EventRecord};
 pub use event_loop::{EventLoop, LoopState, TerminationReason};
@@ -39,6 +41,7 @@ pub use event_reader::{Event, EventReader, MalformedLine, ParseResult};
 pub use hat_registry::HatRegistry;
 pub use hatless_ralph::{HatInfo, HatTopology, HatlessRalph};
 pub use instructions::InstructionBuilder;
+pub use memory::{Memory, MemoryType};
 pub use session_player::{PlayerConfig, ReplayMode, SessionPlayer, TimestampedRecord};
 pub use session_recorder::{Record, SessionRecorder};
 pub use summary_writer::SummaryWriter;

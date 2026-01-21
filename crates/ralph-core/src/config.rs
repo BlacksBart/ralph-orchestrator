@@ -113,6 +113,10 @@ pub struct RalphConfig {
     /// TUI configuration.
     #[serde(default)]
     pub tui: TuiConfig,
+
+    /// Memories configuration for persistent learning across sessions.
+    #[serde(default)]
+    pub memories: MemoriesConfig,
 }
 
 fn default_true() -> bool {
@@ -148,6 +152,8 @@ impl Default for RalphConfig {
             suppress_warnings: false,
             // TUI
             tui: TuiConfig::default(),
+            // Memories
+            memories: MemoriesConfig::default(),
         }
     }
 }
@@ -674,6 +680,102 @@ pub struct TuiConfig {
     /// Prefix key combination (e.g., "ctrl-a", "ctrl-b").
     #[serde(default = "default_prefix_key")]
     pub prefix_key: String,
+}
+
+/// Memory injection mode.
+///
+/// Controls how memories are injected into agent context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InjectMode {
+    /// Ralph automatically injects memories at the start of each iteration.
+    #[default]
+    Auto,
+    /// Agent must explicitly run `ralph memory search` to access memories.
+    Manual,
+    /// Memories feature is disabled.
+    None,
+}
+
+impl std::fmt::Display for InjectMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Auto => write!(f, "auto"),
+            Self::Manual => write!(f, "manual"),
+            Self::None => write!(f, "none"),
+        }
+    }
+}
+
+/// Memories configuration.
+///
+/// Controls the persistent learning system that allows Ralph to accumulate
+/// wisdom across sessions. Memories are stored in `.agent/memories.md`.
+///
+/// Example configuration:
+/// ```yaml
+/// memories:
+///   enabled: true
+///   inject: auto
+///   budget: 2000
+///   skill_injection: true
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoriesConfig {
+    /// Whether the memories feature is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// How memories are injected into agent context.
+    #[serde(default)]
+    pub inject: InjectMode,
+
+    /// Maximum tokens to inject (0 = unlimited).
+    ///
+    /// When set, memories are truncated to fit within this budget.
+    #[serde(default)]
+    pub budget: usize,
+
+    /// Whether to inject the "how to use memories" skill.
+    ///
+    /// When enabled, agents receive instructions on how to create
+    /// and search memories.
+    #[serde(default)]
+    pub skill_injection: bool,
+
+    /// Filter configuration for memory injection.
+    #[serde(default)]
+    pub filter: MemoriesFilter,
+}
+
+impl Default for MemoriesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            inject: InjectMode::Auto,
+            budget: 0,
+            skill_injection: false,
+            filter: MemoriesFilter::default(),
+        }
+    }
+}
+
+/// Filter configuration for memory injection.
+///
+/// Controls which memories are included when priming context.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MemoriesFilter {
+    /// Filter by memory types (empty = all types).
+    #[serde(default)]
+    pub types: Vec<String>,
+
+    /// Filter by tags (empty = all tags).
+    #[serde(default)]
+    pub tags: Vec<String>,
+
+    /// Only include memories from the last N days (0 = no time limit).
+    #[serde(default)]
+    pub recent: u32,
 }
 
 fn default_prefix_key() -> String {
