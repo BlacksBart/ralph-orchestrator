@@ -580,6 +580,15 @@ pub struct CoreConfig {
     /// Per spec: These are always present regardless of hat.
     #[serde(default = "default_guardrails")]
     pub guardrails: Vec<String>,
+
+    /// Root directory for workspace-relative paths (.agent/, memories, etc.).
+    ///
+    /// All relative paths (scratchpad, specs_dir, memories) are resolved relative
+    /// to this directory. Defaults to the current working directory.
+    ///
+    /// This is especially important for E2E tests that run in isolated workspaces.
+    #[serde(skip)]
+    pub workspace_root: std::path::PathBuf,
 }
 
 fn default_scratchpad() -> String {
@@ -604,6 +613,31 @@ impl Default for CoreConfig {
             scratchpad: default_scratchpad(),
             specs_dir: default_specs_dir(),
             guardrails: default_guardrails(),
+            workspace_root: std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        }
+    }
+}
+
+impl CoreConfig {
+    /// Sets the workspace root for resolving relative paths.
+    ///
+    /// This is used by E2E tests to point to their isolated test workspace.
+    pub fn with_workspace_root(mut self, root: impl Into<std::path::PathBuf>) -> Self {
+        self.workspace_root = root.into();
+        self
+    }
+
+    /// Resolves a relative path against the workspace root.
+    ///
+    /// If the path is already absolute, it is returned as-is.
+    /// Otherwise, it is joined with the workspace root.
+    pub fn resolve_path(&self, relative: &str) -> std::path::PathBuf {
+        let path = std::path::Path::new(relative);
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.workspace_root.join(path)
         }
     }
 }
