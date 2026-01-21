@@ -371,7 +371,7 @@ struct EventsArgs {
     #[arg(long, value_enum, default_value_t = OutputFormat::Table)]
     format: OutputFormat,
 
-    /// Path to events file (default: .agent/events.jsonl)
+    /// Path to events file (default: auto-detects current run)
     #[arg(long)]
     file: Option<PathBuf>,
 
@@ -872,9 +872,13 @@ fn init_command(color_mode: ColorMode, args: InitArgs) -> Result<()> {
 fn events_command(color_mode: ColorMode, args: EventsArgs) -> Result<()> {
     let use_colors = color_mode.should_use_colors();
 
+    // Read events path from marker file, fall back to default if marker doesn't exist
+    // This ensures `ralph events` reads from the same events file as the active run
     let history = match args.file {
         Some(path) => EventHistory::new(path),
-        None => EventHistory::default_path(),
+        None => fs::read_to_string(".ralph/current-events")
+            .map(|s| EventHistory::new(s.trim()))
+            .unwrap_or_else(|_| EventHistory::default_path()),
     };
 
     // Handle clear command
