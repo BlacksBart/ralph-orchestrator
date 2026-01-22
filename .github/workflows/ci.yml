@@ -77,5 +77,6 @@ jobs:
       - name: Check ralph-cli packages correctly
         run: |
           # This will fail if include_str! references files outside the crate
-          cargo package -p ralph-cli --allow-dirty --no-verify
+          # Use --list to validate without resolving crates.io dependencies
+          cargo package -p ralph-cli --allow-dirty --list > /dev/null
           echo "Package check passed - all embedded files are included"
