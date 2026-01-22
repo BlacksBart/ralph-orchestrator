@@ -2,6 +2,10 @@
 
 ## Patterns
 
+### mem-1769102069-37b5
+> Coverage reporting configured with cargo-tarpaulin. Run 'cargo tarpaulin --out Html --output-dir coverage --skip-clean' to generate reports. Badge shows 65% coverage in README.
+<!-- tags: testing, coverage, ci | created: 2026-01-22 -->
+
 ### mem-1769098040-8c4a
 > Added three prompt enhancements to core_prompt() in hatless_ralph.rs: (1) Task breakdown guidance explaining when/how to create tasks, (2) State management guidance distinguishing memories (persistent) from context files (session-specific), (3) Auto-listing of .agent/*.md files for context discovery. Implementation uses regular string literals with \n escapes to avoid raw string syntax issues with backticks.
 <!-- tags: prompts, ux, guidance | created: 2026-01-22 -->

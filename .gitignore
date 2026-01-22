@@ -55,6 +55,7 @@ htmlcov/
 .tox/
 tui-validation/
 .e2e-tests/
+coverage/
 
 # Documentation
 docs/_build/site/
