@@ -2,6 +2,10 @@
 
 ## Patterns
 
+### mem-1769098040-8c4a
+> Added three prompt enhancements to core_prompt() in hatless_ralph.rs: (1) Task breakdown guidance explaining when/how to create tasks, (2) State management guidance distinguishing memories (persistent) from context files (session-specific), (3) Auto-listing of .agent/*.md files for context discovery. Implementation uses regular string literals with \n escapes to avoid raw string syntax issues with backticks.
+<!-- tags: prompts, ux, guidance | created: 2026-01-22 -->
+
 ### mem-1769047449-ae29
 > E2E Tier 7 scenarios (IncrementalFeatureScenario, ChainedLoopScenario) test memory+tasks working together across multiple loops. Located in crates/ralph-e2e/src/scenarios/incremental.rs
 <!-- tags: e2e, testing, memories, tasks | created: 2026-01-22 -->
@@ -23,6 +27,10 @@
 <!-- tags: cli, ux, memory | created: 2026-01-22 -->
 
 ## Context
+
+### mem-1769098088-0181
+> confession: objective=Add task breakdown guidance, state management guidance, and context file listing to prompt generation, met=Yes, evidence=crates/ralph-core/src/hatless_ralph.rs:244-318, cargo build pass, 347 tests pass
+<!-- tags: confession | created: 2026-01-22 -->
 
 ### mem-1769087132-aa84
 > confession: verify=grep for '<event topic' in presets/, confidence=90 for opencode fix, 40 for preset format fix

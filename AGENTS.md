@@ -332,3 +332,4 @@ See `.claude/skills/pr-demo/SKILL.md` for full documentation.
 - Backwards compatibility doesn't matter — it adds clutter for no reason
 - Prefer replay-based smoke tests over live API calls for CI
 - Run python tests, using a .venv
+- You MUST not commit emphemeral files.

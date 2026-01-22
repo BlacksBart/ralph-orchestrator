@@ -241,6 +241,74 @@ You MUST close all tasks before LOOP_COMPLETE.
             );
         }
 
+        // Add task breakdown guidance
+        prompt.push_str(
+            "### TASK BREAKDOWN\n\n\
+**When to create tasks:**\n\
+- Multi-step work requiring coordination\n\
+- Work that can be deferred or blocked\n\
+- Dependencies between pieces of work\n\
+\n\
+**When NOT to create tasks:**\n\
+- Single-step work you'll do immediately\n\
+- Already tracked elsewhere (spec, PR description)\n\
+\n\
+**Task granularity:**\n\
+- One task = one testable unit of work\n\
+- Tasks should be completable in 1-2 iterations\n\
+- Break large features into smaller tasks\n\
+\n",
+        );
+
+        // Add state management guidance
+        prompt.push_str(
+            "### STATE MANAGEMENT\n\n\
+**Memories** (`.agent/memories.md`) — Persistent learning:\n\
+- Codebase patterns and conventions\n\
+- Architectural decisions and rationale\n\
+- Recurring problem solutions\n\
+- Project-specific context\n\
+\n\
+**Context Files** (`.agent/*.md`) — Session-specific research:\n\
+- Use descriptive names: `api-research.md`, `cli-ux-findings.md`\n\
+- Store research, analysis, and temporary notes\n\
+- Agent reads based on filename when needed\n\
+- Not injected automatically (unlike memories)\n\
+\n\
+**When to use which:**\n\
+- Memories: Knowledge that persists across sessions\n\
+- Context files: Research/notes for current work session\n\
+\n",
+        );
+
+        // List available context files in .agent/
+        if let Ok(entries) = std::fs::read_dir(".agent") {
+            let md_files: Vec<String> = entries
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    let path = e.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("md")
+                        && path.file_name().and_then(|s| s.to_str()) != Some("memories.md")
+                    {
+                        path.file_name()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if !md_files.is_empty() {
+                prompt.push_str("### AVAILABLE CONTEXT FILES\n\n");
+                prompt.push_str("Context files in `.agent/` (read if relevant to current work):\n");
+                for file in md_files {
+                    prompt.push_str(&format!("- `.agent/{}`\n", file));
+                }
+                prompt.push('\n');
+            }
+        }
+
         prompt.push_str(&format!(
             r"### GUARDRAILS
 {guardrails}
