@@ -838,4 +838,4 @@ def check_memory():
 
 - [Monitoring Guide](../advanced/monitoring.md) - Set up comprehensive monitoring
 - [Security Best Practices](../advanced/security.md) - Security hardening
-- [Troubleshooting Guide](../troubleshooting.md) - Common issues and solutions
+- [Troubleshooting Guide](../reference/troubleshooting.md) - Common issues and solutions

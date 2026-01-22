@@ -72,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Migration
 
-See [Migration Guide](migration/v2-hatless-ralph.md) for upgrading from v1.x.
+See [Migration Guide](../migration/v2-hatless-ralph.md) for upgrading from v1.x.
 
 ## [1.2.3] - 2026-01-12
 
@@ -412,7 +412,7 @@ Thanks to all contributors who have helped improve Ralph Orchestrator:
 
 ## How to Contribute
 
-See [CONTRIBUTING.md](contributing.md) for details on:
+See [CONTRIBUTING.md](../contributing.md) for details on:
 
 - Reporting bugs
 - Suggesting features

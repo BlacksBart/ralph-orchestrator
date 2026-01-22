@@ -354,7 +354,7 @@ mkdocs build
 - [Development Setup Video](https://youtube.com/...)
 - [Architecture Overview](advanced/architecture.md)
 - [API Documentation](api/orchestrator.md)
-- [Testing Guide](testing.md)
+- [Testing Guide](contributing/testing.md)
 
 ## Recognition
 

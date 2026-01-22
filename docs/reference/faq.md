@@ -107,7 +107,7 @@ Loop detection cannot be disabled directly, but it only triggers on highly simil
 3. Check if agent is stuck on the same subtask
 4. Refine your prompt to encourage varied responses
 
-See [Loop Detection](advanced/loop-detection.md) for detailed documentation.
+See [Loop Detection](../advanced/loop-detection.md) for detailed documentation.
 
 ### What should I put in PROMPT.md?
 
@@ -404,7 +404,7 @@ Yes! We welcome contributions:
 - Documentation improvements
 - Agent integrations
 
-See [CONTRIBUTING.md](contributing.md) for guidelines.
+See [CONTRIBUTING.md](../contributing.md) for guidelines.
 
 ### Where can I get help?
 

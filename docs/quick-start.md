@@ -222,8 +222,8 @@ If your task runs indefinitely:
 
 ## Getting Help
 
-- Check the [FAQ](faq.md)
-- Read the [Troubleshooting Guide](troubleshooting.md)
+- Check the [FAQ](reference/faq.md)
+- Read the [Troubleshooting Guide](reference/troubleshooting.md)
 - Open an [issue on GitHub](https://github.com/mikeyobrien/ralph-orchestrator/issues)
 - Join the [discussions](https://github.com/mikeyobrien/ralph-orchestrator/discussions)
 

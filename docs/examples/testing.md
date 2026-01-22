@@ -533,5 +533,5 @@ class TestPerformance:
 
 ## See Also
 
-- [Testing Best Practices](../testing.md)
+- [Testing Best Practices](../contributing/testing.md)
 - [CI/CD Integration](../deployment/ci-cd.md)

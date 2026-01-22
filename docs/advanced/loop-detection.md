@@ -278,5 +278,5 @@ If rapidfuzz is not installed, loop detection is gracefully skipped with a debug
 ## Related Topics
 
 - [Safety Mechanisms](../guide/overview.md#safety-features)
-- [Troubleshooting](../troubleshooting.md)
-- [Glossary: Loop Detection](../glossary.md#l)
+- [Troubleshooting](../reference/troubleshooting.md)
+- [Glossary: Loop Detection](../reference/glossary.md#l)
