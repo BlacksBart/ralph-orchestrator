@@ -106,6 +106,14 @@ impl HatlessRalph {
     pub fn build_prompt(&self, context: &str, active_hats: &[&ralph_proto::Hat]) -> String {
         let mut prompt = self.core_prompt();
 
+        // Extract the original objective from task.start event
+        let objective = self.extract_objective(context);
+
+        // Add prominent OBJECTIVE section first
+        if let Some(ref obj) = objective {
+            prompt.push_str(&self.objective_section(obj));
+        }
+
         // Include pending events BEFORE workflow so Ralph sees the task first
         if !context.trim().is_empty() {
             prompt.push_str("## PENDING EVENTS\n\n");
@@ -129,9 +137,42 @@ impl HatlessRalph {
         }
 
         prompt.push_str(&self.event_writing_section());
-        prompt.push_str(&self.done_section());
+        prompt.push_str(&self.done_section(objective.as_deref()));
 
         prompt
+    }
+
+    /// Extracts the original user objective from the task.start event in context.
+    fn extract_objective(&self, context: &str) -> Option<String> {
+        // Look for [task.start] event which contains the original user prompt
+        for line in context.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("[task.start]") {
+                // Extract everything after [task.start]
+                let payload = trimmed.strip_prefix("[task.start]")?.trim();
+                if !payload.is_empty() {
+                    return Some(payload.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// Generates the OBJECTIVE section - the primary goal Ralph must achieve.
+    fn objective_section(&self, objective: &str) -> String {
+        format!(
+            r"## OBJECTIVE
+
+**This is your primary goal. All work must advance this objective.**
+
+> {objective}
+
+You MUST keep this objective in mind throughout the iteration.
+You MUST NOT get distracted by workflow mechanics — they serve this goal.
+
+",
+            objective = objective
+        )
     }
 
     /// Always returns true - Ralph handles all events as fallback.
@@ -209,13 +250,8 @@ Task markers:
 Runtime work tracking. For implementation planning, use code tasks (`tasks/*.code-task.md`).
 
 **When you SHOULD create tasks:**
-- Work has 2+ distinct steps that need tracking
 - You need to defer work (blocked, out of scope, lower priority)
 - Dependencies exist between pieces of work (use `--blocked-by`)
-
-**When you SHOULD NOT create tasks:**
-- Single-step work you'll do immediately
-- Already tracked elsewhere (spec file, PR description)
 
 **Commands:**
 ```bash
@@ -235,7 +271,7 @@ You MUST NOT close a task unless ALL of these conditions are met:
 3. Build succeeds (if applicable)
 4. You have evidence of completion (command output, test results)
 
-You MUST close all tasks before LOOP_COMPLETE.
+You MUST close all tasks before LOOP_COMPLETE. 
 
 ",
             );
@@ -244,16 +280,6 @@ You MUST close all tasks before LOOP_COMPLETE.
         // Add task breakdown guidance
         prompt.push_str(
             "### TASK BREAKDOWN\n\n\
-**When to create tasks:**\n\
-- Multi-step work requiring coordination\n\
-- Work that can be deferred or blocked\n\
-- Dependencies between pieces of work\n\
-\n\
-**When NOT to create tasks:**\n\
-- Single-step work you'll do immediately\n\
-- Already tracked elsewhere (spec, PR description)\n\
-\n\
-**Task granularity:**\n\
 - One task = one testable unit of work\n\
 - Tasks should be completable in 1-2 iterations\n\
 - Break large features into smaller tasks\n\
@@ -358,7 +384,7 @@ You MUST NOT do implementation work — delegation is your only job.
 
 ### 1. PLAN
 You MUST review memories and pending events to understand context.
-You SHOULD create tasks with `ralph tools task add` to represent units of work.
+You MUST create tasks with `ralph tools task add` to represent units of work.
 
 ### 2. DELEGATE
 You MUST publish exactly ONE event to hand off ONE task to specialized hats.
@@ -404,7 +430,7 @@ You MAY use parallel subagents (up to 10) for searches.
 
 ### 2. PLAN
 You MUST review memories for context.
-You SHOULD create tasks with `ralph tools task add` for multi-step work.
+You MUST create tasks with `ralph tools task add` for multi-step work.
 
 ### 3. IMPLEMENT
 You MUST pick exactly ONE task from `ralph tools task ready`.
@@ -415,7 +441,7 @@ You MUST run tests and verify the implementation works before closing.
 You MUST NOT close a task without evidence of completion (test output, build success).
 You MUST capture the why, not just the what.
 You MUST close the task with `ralph tools task close` only AFTER verification passes.
-You SHOULD save learnings with `ralph tools memory add`.
+You SHOULD save any learnings with `ralph tools memory add`.
 
 ### 5. EXIT
 You MUST exit after completing ONE task.
@@ -649,15 +675,29 @@ You MUST NOT use echo/cat to write events because shell escaping breaks JSON.
         )
     }
 
-    fn done_section(&self) -> String {
-        format!(
+    fn done_section(&self, objective: Option<&str>) -> String {
+        let mut section = format!(
             r"## DONE
 
-You MUST output {} when all tasks are complete.
-You MUST NOT output {} until all tasks are verified complete.
+You MUST output {} when the objective is complete and all tasks are done.
 ",
-            self.completion_promise, self.completion_promise
-        )
+            self.completion_promise
+        );
+
+        // Reinforce the objective at the end to bookend the prompt
+        if let Some(obj) = objective {
+            section.push_str(&format!(
+                r"
+**Remember your objective:**
+> {}
+
+Do not declare completion until this objective is fully satisfied.
+",
+                obj
+            ));
+        }
+
+        section
     }
 }
 
@@ -1564,6 +1604,162 @@ hats:
         assert!(
             !prompt.contains("CRITICAL: Task Closure Requirements"),
             "Scratchpad mode should not have CRITICAL task closure section"
+        );
+    }
+
+    // === Objective Section Tests ===
+
+    #[test]
+    fn test_objective_section_present_with_task_start() {
+        // When context contains [task.start], OBJECTIVE section should appear
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+
+        let context = "[task.start] Implement user authentication with JWT tokens";
+        let prompt = ralph.build_prompt(context, &[]);
+
+        assert!(
+            prompt.contains("## OBJECTIVE"),
+            "Should have OBJECTIVE section when task.start present"
+        );
+        assert!(
+            prompt.contains("Implement user authentication with JWT tokens"),
+            "OBJECTIVE should contain the original user prompt"
+        );
+        assert!(
+            prompt.contains("This is your primary goal"),
+            "OBJECTIVE should emphasize this is the primary goal"
+        );
+    }
+
+    #[test]
+    fn test_objective_reinforced_in_done_section() {
+        // The objective should be restated in the DONE section (bookend pattern)
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+
+        let context = "[task.start] Fix the login bug in auth module";
+        let prompt = ralph.build_prompt(context, &[]);
+
+        // Check DONE section contains objective reinforcement
+        let done_pos = prompt.find("## DONE").expect("Should have DONE section");
+        let after_done = &prompt[done_pos..];
+
+        assert!(
+            after_done.contains("Remember your objective"),
+            "DONE section should remind about objective"
+        );
+        assert!(
+            after_done.contains("Fix the login bug in auth module"),
+            "DONE section should restate the objective"
+        );
+    }
+
+    #[test]
+    fn test_objective_appears_before_pending_events() {
+        // OBJECTIVE should appear BEFORE PENDING EVENTS for prominence
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+
+        let context = "[task.start] Build feature X";
+        let prompt = ralph.build_prompt(context, &[]);
+
+        let objective_pos = prompt.find("## OBJECTIVE").expect("Should have OBJECTIVE");
+        let events_pos = prompt
+            .find("## PENDING EVENTS")
+            .expect("Should have PENDING EVENTS");
+
+        assert!(
+            objective_pos < events_pos,
+            "OBJECTIVE ({}) should appear before PENDING EVENTS ({})",
+            objective_pos,
+            events_pos
+        );
+    }
+
+    #[test]
+    fn test_no_objective_without_task_start() {
+        // When context has no task.start, no OBJECTIVE section should appear
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+
+        let context = "[build.done] Build completed successfully";
+        let prompt = ralph.build_prompt(context, &[]);
+
+        assert!(
+            !prompt.contains("## OBJECTIVE"),
+            "Should NOT have OBJECTIVE section without task.start"
+        );
+    }
+
+    #[test]
+    fn test_objective_extracted_correctly() {
+        // Test that objective extraction handles various formats
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+
+        // Test with whitespace
+        let context = "  [task.start]   Review this PR for security issues  ";
+        let prompt = ralph.build_prompt(context, &[]);
+
+        assert!(
+            prompt.contains("Review this PR for security issues"),
+            "Should extract objective with trimmed whitespace"
+        );
+    }
+
+    #[test]
+    fn test_objective_with_multiple_events() {
+        // When multiple events exist, objective is still extracted from task.start
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+
+        let context = r"[task.start] Implement feature Y
+[build.done] Previous build succeeded
+[test.passed] All tests green";
+        let prompt = ralph.build_prompt(context, &[]);
+
+        assert!(
+            prompt.contains("## OBJECTIVE"),
+            "Should have OBJECTIVE section"
+        );
+        assert!(
+            prompt.contains("Implement feature Y"),
+            "OBJECTIVE should contain the task.start payload"
+        );
+        // Should NOT include other events in objective
+        assert!(
+            !prompt.contains("## OBJECTIVE")
+                || !prompt[..prompt.find("## PENDING EVENTS").unwrap_or(prompt.len())]
+                    .contains("Previous build succeeded"),
+            "OBJECTIVE should NOT include other event payloads"
+        );
+    }
+
+    #[test]
+    fn test_done_section_without_objective() {
+        // When no objective, DONE section should still work but without reinforcement
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+
+        let context = "[build.done] Build completed";
+        let prompt = ralph.build_prompt(context, &[]);
+
+        assert!(prompt.contains("## DONE"), "Should have DONE section");
+        assert!(
+            prompt.contains("LOOP_COMPLETE"),
+            "DONE should mention completion promise"
+        );
+        assert!(
+            !prompt.contains("Remember your objective"),
+            "Should NOT have objective reinforcement without task.start"
         );
     }
 }
