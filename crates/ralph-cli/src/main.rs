@@ -37,7 +37,8 @@ use tracing::{debug, info, warn};
 // Unix-specific process management for process group leadership
 #[cfg(unix)]
 mod process_management {
-    use nix::unistd::{Pid, setpgid};
+    use nix::unistd::{Pid, getpgrp, setpgid, tcgetpgrp};
+    use std::io::{IsTerminal, stdin, stdout};
     use tracing::debug;
 
     /// Sets up process group leadership.
@@ -46,9 +47,24 @@ mod process_management {
     /// CLI processes (Claude, Kiro, etc.) belong to this group. On termination,
     /// the entire process group receives the signal, preventing orphans."
     pub fn setup_process_group() {
-        // Make ourselves the process group leader
-        // This ensures our child processes are in our process group
+        // Make ourselves the process group leader when safe.
+        // If we're launched by a wrapper (e.g., `npx`), moving to a new process
+        // group can drop us out of the foreground TTY group and break TUI input.
         let pid = Pid::this();
+        let pgrp = getpgrp();
+        if pgrp == pid {
+            debug!("Already process group leader: PID {}", pid);
+            return;
+        }
+
+        if is_foreground_tty_group(pgrp) {
+            debug!(
+                "Skipping setpgid: keeping foreground process group {}",
+                pgrp
+            );
+            return;
+        }
+
         if let Err(e) = setpgid(pid, pid) {
             // EPERM is OK - we're already a process group leader (e.g., started from shell)
             if e != nix::errno::Errno::EPERM {
@@ -59,6 +75,23 @@ mod process_management {
             }
         }
         debug!("Process group initialized: PID {}", pid);
+    }
+
+    fn is_foreground_tty_group(current_pgrp: Pid) -> bool {
+        // Prefer stdin for foreground checks, fall back to stdout.
+        if stdin().is_terminal()
+            && let Ok(fg) = tcgetpgrp(stdin())
+        {
+            return fg == current_pgrp;
+        }
+
+        if stdout().is_terminal()
+            && let Ok(fg) = tcgetpgrp(stdout())
+        {
+            return fg == current_pgrp;
+        }
+
+        false
     }
 }
 
