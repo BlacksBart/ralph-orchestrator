@@ -233,8 +233,14 @@ The `ralph-e2e` crate validates Ralph's behavior against real AI backends. Use t
 ### Quick Start
 
 ```bash
-# Run all tests for Claude backend
+# Run all tests for Claude backend (manual, uses API)
 cargo run -p ralph-e2e -- claude
+
+# Run all tests in mock mode (CI-safe, no API calls)
+cargo run -p ralph-e2e -- --mock
+
+# Run specific scenarios in mock mode
+cargo run -p ralph-e2e -- --mock --filter connect
 
 # Run all tests for all available backends
 cargo run -p ralph-e2e -- all
@@ -278,6 +284,16 @@ Generated in `.e2e-tests/`:
 - ✅ After changing core orchestration logic
 - ✅ After modifying event parsing or hat routing
 - ✅ When adding support for new backends
+
+### CI Integration
+
+Mock E2E tests run automatically on every PR/push via GitHub Actions:
+- ✅ Cost-free (replays cassettes, no API calls)
+- ✅ Fast (instant replay, ~1-2 seconds total)
+- ✅ Deterministic (same cassettes = same results)
+
+The CI job runs all scenarios that have cassettes available and uploads
+the E2E report as an artifact for review.
 
 ### E2E Orchestration
 
