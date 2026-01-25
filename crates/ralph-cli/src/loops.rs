@@ -136,8 +136,28 @@ pub fn execute(args: LoopsArgs, use_colors: bool) -> Result<()> {
     }
 }
 
+/// Check if a process is alive.
+fn is_process_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::kill;
+        use nix::unistd::Pid;
+
+        // Signal 0 checks if process exists without sending a signal
+        kill(Pid::from_raw(pid as i32), None).is_ok()
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
 /// List all loops with their status.
 fn list_loops(use_colors: bool) -> Result<()> {
+    use ralph_core::LoopLock;
+
     let cwd = std::env::current_dir()?;
     let registry = LoopRegistry::new(&cwd);
     let merge_queue = MergeQueue::new(&cwd);
@@ -153,6 +173,28 @@ fn list_loops(use_colors: bool) -> Result<()> {
 
     // Build combined view
     let mut rows: Vec<LoopRow> = Vec::new();
+
+    // Check for primary loop holding the lock (not in a worktree)
+    if let Ok(true) = LoopLock::is_locked(&cwd) {
+        // Only show primary loop if it's not already tracked in the registry
+        // (Registry entries with no worktree_path are primary loops)
+        let primary_in_registry = loop_entries
+            .iter()
+            .any(|e| e.worktree_path.is_none() && e.is_alive());
+
+        if !primary_in_registry && let Ok(Some(metadata)) = LoopLock::read_existing(&cwd) {
+            // Verify the process is actually alive
+            let is_alive = is_process_alive(metadata.pid);
+            if is_alive {
+                rows.push(LoopRow {
+                    id: "(primary)".to_string(),
+                    status: "running".to_string(),
+                    location: "(in-place)".to_string(),
+                    prompt: truncate(&metadata.prompt, 40),
+                });
+            }
+        }
+    }
 
     // Add running loops from registry
     for entry in &loop_entries {
@@ -284,14 +326,35 @@ fn show_logs(args: LogsArgs) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let (loop_id, worktree_path) = resolve_loop(&cwd, &args.loop_id)?;
 
-    let events_path = if let Some(wt_path) = worktree_path {
-        PathBuf::from(wt_path).join(".ralph/events.jsonl")
+    let base_path = if let Some(ref wt_path) = worktree_path {
+        PathBuf::from(wt_path)
     } else {
-        cwd.join(".ralph/events.jsonl")
+        cwd.clone()
     };
 
+    let events_path = base_path.join(".ralph/events.jsonl");
+
     if !events_path.exists() {
-        bail!("No events file found for loop '{}'", loop_id);
+        // Fallback: show history file instead
+        let history_path = base_path.join(".ralph/history.jsonl");
+
+        if history_path.exists() {
+            eprintln!(
+                "Note: Events file not found for loop '{}', showing history instead",
+                loop_id
+            );
+            let contents =
+                std::fs::read_to_string(&history_path).context("Failed to read history file")?;
+            for line in contents.lines() {
+                println!("{}", line);
+            }
+            return Ok(());
+        }
+
+        bail!(
+            "No events file found for loop '{}' (may have crashed before publishing events)",
+            loop_id
+        );
     }
 
     if args.follow {
@@ -444,31 +507,57 @@ fn discard_loop(args: DiscardArgs) -> Result<()> {
 
 /// Stop a running loop.
 fn stop_loop(args: StopArgs) -> Result<()> {
+    use ralph_core::LoopLock;
+
     let cwd = std::env::current_dir()?;
+    let (loop_id, worktree_path) = resolve_loop(&cwd, &args.loop_id)?;
+
     let registry = LoopRegistry::new(&cwd);
 
-    let entry = registry
-        .get(&args.loop_id)?
-        .context(format!("Loop '{}' not found in registry", args.loop_id))?;
+    // Try registry first for PID
+    let pid = if let Ok(Some(entry)) = registry.get(&loop_id) {
+        if !entry.is_alive() {
+            bail!(
+                "Loop '{}' is not running (process {} not found)",
+                loop_id,
+                entry.pid
+            );
+        }
+        Some(entry.pid)
+    } else if let Some(wt_path) = &worktree_path {
+        // Fall back to reading PID from worktree's lock file
+        read_pid_from_worktree(wt_path)?
+    } else {
+        // Try reading from primary loop's lock file
+        if let Ok(Some(metadata)) = LoopLock::read_existing(&cwd) {
+            Some(metadata.pid)
+        } else {
+            None
+        }
+    };
 
-    if !entry.is_alive() {
-        bail!(
-            "Loop '{}' is not running (process {} not found)",
-            args.loop_id,
-            entry.pid
-        );
-    }
+    let pid = pid.context(format!(
+        "Cannot determine PID for loop '{}' - it may have already stopped",
+        loop_id
+    ))?;
 
-    let signal = if args.force { "SIGKILL" } else { "SIGTERM" };
-    println!(
-        "Sending {} to loop '{}' (PID {})...",
-        signal, args.loop_id, entry.pid
-    );
-
+    // Verify process is alive before sending signal
     #[cfg(unix)]
     {
         use nix::sys::signal::{Signal, kill};
         use nix::unistd::Pid;
+
+        // Check if process exists (signal 0)
+        if kill(Pid::from_raw(pid as i32), None).is_err() {
+            bail!(
+                "Loop '{}' is not running (process {} not found)",
+                loop_id,
+                pid
+            );
+        }
+
+        let signal = if args.force { "SIGKILL" } else { "SIGTERM" };
+        println!("Sending {} to loop '{}' (PID {})...", signal, loop_id, pid);
 
         let sig = if args.force {
             Signal::SIGKILL
@@ -476,16 +565,29 @@ fn stop_loop(args: StopArgs) -> Result<()> {
             Signal::SIGTERM
         };
 
-        kill(Pid::from_raw(entry.pid as i32), sig).context("Failed to send signal")?;
+        kill(Pid::from_raw(pid as i32), sig).context("Failed to send signal")?;
     }
 
     #[cfg(not(unix))]
     {
+        let _ = pid;
         bail!("Stopping loops is only supported on Unix systems");
     }
 
     println!("Signal sent.");
     Ok(())
+}
+
+/// Read PID from a worktree's loop lock file.
+fn read_pid_from_worktree(worktree_path: &str) -> Result<Option<u32>> {
+    use ralph_core::LoopLock;
+
+    let wt_path = PathBuf::from(worktree_path);
+    if let Ok(Some(metadata)) = LoopLock::read_existing(&wt_path) {
+        Ok(Some(metadata.pid))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Prune stale loops.
@@ -575,8 +677,9 @@ fn show_diff(args: DiffArgs) -> Result<()> {
     }
 
     // Show diff from merge-base
-    let mut git_args = vec!["diff", "main..."];
-    git_args.push(&branch);
+    // Note: three-dot syntax requires both refs in a single argument: "main...branch"
+    let diff_range = format!("main...{}", branch);
+    let mut git_args = vec!["diff", &diff_range];
 
     if args.stat {
         git_args.push("--stat");
