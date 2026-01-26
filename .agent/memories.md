@@ -26,6 +26,10 @@
 
 ## Fixes
 
+### mem-1769390410-9433
+> Improved task list CLI: Added --days and --limit flags to limit output, and added colors/sorting for better readability.
+<!-- tags: cli, ux, task | created: 2026-01-26 -->
+
 ### mem-1769047926-2118
 > Memory CLI output improvements: Use relative dates (today/yesterday/N days ago), longer content previews (50 chars), cyan colored tags, boxed detail views with visual separators. Follow clig.dev CLI UX guidelines: human-first output with JSON fallback, colors disabled for non-TTY.
 <!-- tags: cli, ux, memory | created: 2026-01-22 -->
