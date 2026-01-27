@@ -765,7 +765,7 @@ async fn main() -> Result<()> {
         Some(Commands::Tools(args)) => tools::execute(args, cli.color.should_use_colors()),
         Some(Commands::Loops(args)) => loops::execute(args, cli.color.should_use_colors()),
         Some(Commands::Hats(args)) => {
-            hats::execute(&cli.config, args, cli.color.should_use_colors())
+            hats::execute(&config_sources, args, cli.color.should_use_colors())
         }
         None => {
             // Default to run with TUI enabled (new default behavior)

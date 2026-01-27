@@ -77,8 +77,8 @@ pub struct ShowArgs {
 }
 
 /// Execute a hats command.
-pub fn execute(config_path: &std::path::Path, args: HatsArgs, use_colors: bool) -> Result<()> {
-    let config = load_config(config_path)?;
+pub fn execute(config_sources: &[ConfigSource], args: HatsArgs, use_colors: bool) -> Result<()> {
+    let config = load_config(config_sources)?;
 
     let registry = HatRegistry::from_config(&config);
     let mut stdout = std::io::stdout();
@@ -101,21 +101,36 @@ pub fn execute(config_path: &std::path::Path, args: HatsArgs, use_colors: bool) 
     }
 }
 
-/// Load configuration from config path, with proper error handling.
+/// Load configuration from config sources, with proper error handling.
 ///
 /// Supports:
 /// - File paths (local config files)
 /// - Builtin presets (e.g., `builtin:confession-loop`)
 ///
-/// Remote URLs are not supported (would require async); returns an error with guidance.
-fn load_config(config_path: &std::path::Path) -> Result<RalphConfig> {
-    let config_str = config_path.to_string_lossy();
-    let source = ConfigSource::parse(&config_str);
+/// Remote URLs and overrides are not supported; returns an error with guidance.
+fn load_config(config_sources: &[ConfigSource]) -> Result<RalphConfig> {
+    // Filter out overrides and remote URLs - not supported for hats command
+    let sources: Vec<_> = config_sources
+        .iter()
+        .filter(|s| !matches!(s, ConfigSource::Override { .. }))
+        .collect();
+
+    if sources.is_empty() {
+        // No config source specified - use defaults
+        warn!("No config source specified, using defaults");
+        return Ok(RalphConfig::default());
+    }
+
+    if sources.len() > 1 {
+        warn!("Multiple config sources specified, using first one. Others ignored.");
+    }
+
+    let source = &sources[0];
 
     match source {
         ConfigSource::File(path) => {
             if path.exists() {
-                RalphConfig::from_file(&path)
+                RalphConfig::from_file(path)
                     .with_context(|| format!("Failed to load config from {:?}", path))
             } else if path.as_path() == std::path::Path::new("ralph.yml") {
                 // Default path doesn't exist - this is fine, use defaults
@@ -130,7 +145,7 @@ fn load_config(config_path: &std::path::Path) -> Result<RalphConfig> {
             }
         }
         ConfigSource::Builtin(name) => {
-            let preset = presets::get_preset(&name).ok_or_else(|| {
+            let preset = presets::get_preset(name).ok_or_else(|| {
                 let available = presets::preset_names().join(", ");
                 anyhow::anyhow!(
                     "Unknown preset '{}'. Run `ralph init --list-presets` to see available presets.\n\nAvailable: {}",
@@ -146,6 +161,14 @@ fn load_config(config_path: &std::path::Path) -> Result<RalphConfig> {
             Err(anyhow::anyhow!(
                 "Remote config URLs are not supported for `ralph hats`.\n\nPlease use a local config file or builtin preset instead.\nURL: {}",
                 url
+            ))
+        }
+        ConfigSource::Override { key, value } => {
+            // This should never happen since we filter out overrides above
+            Err(anyhow::anyhow!(
+                "Config overrides are not supported for `ralph hats`.\n\nPlease use a local config file or builtin preset instead.\nOverride: {}={}",
+                key,
+                value
             ))
         }
     }
@@ -947,8 +970,10 @@ mod tests {
     #[test]
     fn test_load_config_missing_explicit_file_errors() {
         // When user explicitly specifies a non-existent config file, it should error
-        let path = std::path::Path::new("nonexistent-config-that-does-not-exist.yml");
-        let result = load_config(path);
+        let source = ConfigSource::File(std::path::PathBuf::from(
+            "nonexistent-config-that-does-not-exist.yml",
+        ));
+        let result = load_config(&[source]);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Config file not found"));
@@ -957,8 +982,8 @@ mod tests {
     #[test]
     fn test_load_config_remote_url_not_supported() {
         // Remote URLs should error with a clear message
-        let path = std::path::Path::new("http://example.com/config.yml");
-        let result = load_config(path);
+        let source = ConfigSource::Remote("http://example.com/config.yml".to_string());
+        let result = load_config(&[source]);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Remote config URLs are not supported"));
@@ -967,8 +992,8 @@ mod tests {
     #[test]
     fn test_load_config_unknown_preset_errors() {
         // Unknown builtin preset should error with helpful message
-        let path = std::path::Path::new("builtin:nonexistent-preset-name");
-        let result = load_config(path);
+        let source = ConfigSource::Builtin("nonexistent-preset-name".to_string());
+        let result = load_config(&[source]);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Unknown preset"));
@@ -978,8 +1003,8 @@ mod tests {
     #[test]
     fn test_load_config_builtin_preset_works() {
         // Builtin preset should load successfully
-        let path = std::path::Path::new("builtin:confession-loop");
-        let result = load_config(path);
+        let source = ConfigSource::Builtin("confession-loop".to_string());
+        let result = load_config(&[source]);
         assert!(result.is_ok());
         let config = result.unwrap();
         // confession-loop preset has hats defined
