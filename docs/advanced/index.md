@@ -13,6 +13,7 @@ Deep dives into Ralph's internals and advanced usage patterns.
 | [Task System](task-system.md) | Runtime work tracking |
 | [Testing & Validation](testing.md) | Smoke tests, E2E tests, TUI validation |
 | [Diagnostics](diagnostics.md) | Debug with full visibility |
+| [Parallel Loops](parallel-loops.md) | Run multiple loops concurrently with worktrees |
 
 ## When to Read This
 

@@ -70,6 +70,7 @@ nav:
     - The Ralph Wiggum Technique: concepts/ralph-wiggum-technique.md
     - The Six Tenets: concepts/tenets.md
     - Hats & Events: concepts/hats-and-events.md
+    - Coordination Patterns: concepts/coordination-patterns.md
     - Memories & Tasks: concepts/memories-and-tasks.md
     - Backpressure: concepts/backpressure.md
   - User Guide:
@@ -89,6 +90,7 @@ nav:
     - Task System: advanced/task-system.md
     - Testing & Validation: advanced/testing.md
     - Diagnostics: advanced/diagnostics.md
+    - Parallel Loops: advanced/parallel-loops.md
   - API Reference:
     - api/index.md
     - ralph-proto: api/ralph-proto.md

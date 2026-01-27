@@ -9,8 +9,9 @@ Ralph is built around a few key ideas:
 1. **[The Ralph Wiggum Technique](ralph-wiggum-technique.md)** — Continuous iteration until success
 2. **[The Six Tenets](tenets.md)** — Guiding principles for orchestration
 3. **[Hats & Events](hats-and-events.md)** — Specialized personas coordinating through typed events
-4. **[Memories & Tasks](memories-and-tasks.md)** — Persistent learning and runtime work tracking
-5. **[Backpressure](backpressure.md)** — Quality gates that reject incomplete work
+4. **[Coordination Patterns](coordination-patterns.md)** — Multi-agent workflow architectures
+5. **[Memories & Tasks](memories-and-tasks.md)** — Persistent learning and runtime work tracking
+6. **[Backpressure](backpressure.md)** — Quality gates that reject incomplete work
 
 ## The Core Philosophy
 
