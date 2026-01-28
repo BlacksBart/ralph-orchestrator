@@ -93,6 +93,24 @@ vi.mock("@/components/tasks/EnhancedLogViewer", () => ({
   )),
 }));
 
+// Mock TaskCardSkeleton component to track rendering
+vi.mock("@/components/tasks/TaskCardSkeleton", () => ({
+  TaskCardSkeleton: vi.fn(() => (
+    <div data-testid="task-card-skeleton">Mocked TaskCardSkeleton</div>
+  )),
+}));
+
+// Mock EmptyState component to track rendering
+vi.mock("@/components/tasks/EmptyState", () => ({
+  EmptyState: vi.fn(({ icon: Icon, title, description }: { icon: React.ComponentType<{ className?: string }>, title: string, description: string }) => (
+    <div data-testid="empty-state">
+      <Icon data-testid="empty-state-icon" className="test-icon" />
+      <span data-testid="empty-state-title">{title}</span>
+      <span data-testid="empty-state-description">{description}</span>
+    </div>
+  )),
+}));
+
 // Mock trpc
 vi.mock("@/trpc", () => ({
   trpc: {
@@ -216,6 +234,22 @@ describe("TaskDetailPage", () => {
       expect(screen.getByText(/loading/i)).toBeInTheDocument();
     });
 
+    it("uses TaskCardSkeleton component for loading state", async () => {
+      // Given: Task is loading
+      const { trpc } = await import("@/trpc");
+      vi.mocked(trpc.task.get.useQuery).mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        isError: false,
+      } as ReturnType<typeof trpc.task.get.useQuery>);
+
+      // When: The page is rendered
+      renderWithRouter("task-001");
+
+      // Then: TaskCardSkeleton should be rendered
+      expect(screen.getByTestId("task-card-skeleton")).toBeInTheDocument();
+    });
+
     it("shows error state when task fetch fails", async () => {
       // Given: Task fetch failed
       const { trpc } = await import("@/trpc");
@@ -234,6 +268,27 @@ describe("TaskDetailPage", () => {
       expect(screen.getByText(/task not found/i)).toBeInTheDocument();
     });
 
+    it("uses EmptyState component with AlertCircle icon for error state", async () => {
+      // Given: Task fetch failed
+      const { trpc } = await import("@/trpc");
+      vi.mocked(trpc.task.get.useQuery).mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: { message: "Failed to load task" },
+      } as ReturnType<typeof trpc.task.get.useQuery>);
+
+      // When: The page is rendered
+      renderWithRouter("task-001");
+
+      // Then: EmptyState should be rendered with AlertCircle icon
+      expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+      const icon = screen.getByTestId("empty-state-icon");
+      expect(icon).toBeInTheDocument();
+      // Verify icon is AlertCircle (lucide class)
+      expect(icon).toHaveClass("lucide-circle-alert");
+    });
+
     it("shows not found state when task does not exist", async () => {
       // Given: Task query returns null
       const { trpc } = await import("@/trpc");
@@ -248,6 +303,24 @@ describe("TaskDetailPage", () => {
 
       // Then: Not found message should be displayed
       expect(screen.getByText(/task not found/i)).toBeInTheDocument();
+    });
+
+    it("uses EmptyState component with FileQuestion icon for not-found state", async () => {
+      // Given: Task query returns null (task doesn't exist)
+      const { trpc } = await import("@/trpc");
+      vi.mocked(trpc.task.get.useQuery).mockReturnValue({
+        data: null,
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof trpc.task.get.useQuery>);
+
+      // When: The page is rendered
+      renderWithRouter("task-001");
+
+      // Then: EmptyState should be rendered
+      expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+      // Title should indicate task not found
+      expect(screen.getByTestId("empty-state-title")).toHaveTextContent(/task not found/i);
     });
   });
 

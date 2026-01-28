@@ -20,7 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { EnhancedLogViewer } from "@/components/tasks/EnhancedLogViewer";
-import { AlertTriangle, Send, Loader2, GitMerge, CheckCircle2, FileText, GitCommit } from "lucide-react";
+import { AlertTriangle, Send, Loader2, GitMerge, CheckCircle2, FileText, GitCommit, AlertCircle, FileQuestion } from "lucide-react";
+import { TaskCardSkeleton } from "@/components/tasks/TaskCardSkeleton";
+import { EmptyState } from "@/components/tasks/EmptyState";
 import { type LoopDetailData } from "@/components/tasks/LoopDetail";
 import { LoopBadge } from "@/components/tasks/LoopBadge";
 
@@ -200,6 +202,7 @@ export function TaskDetailPage() {
     return (
       <div className="p-6">
         <p>Loading...</p>
+        <TaskCardSkeleton />
       </div>
     );
   }
@@ -208,8 +211,11 @@ export function TaskDetailPage() {
   if (isError) {
     return (
       <div className="p-6">
-        <p>Error</p>
-        <p>{error?.message || "Task not found"}</p>
+        <EmptyState
+          icon={AlertCircle}
+          title="Error"
+          description={error?.message || "Task not found"}
+        />
       </div>
     );
   }
@@ -218,7 +224,11 @@ export function TaskDetailPage() {
   if (!task) {
     return (
       <div className="p-6">
-        <p>Task not found</p>
+        <EmptyState
+          icon={FileQuestion}
+          title="Task not found"
+          description="The requested task could not be found."
+        />
       </div>
     );
   }
