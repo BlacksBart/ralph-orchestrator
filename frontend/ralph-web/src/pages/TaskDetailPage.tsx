@@ -232,6 +232,7 @@ export function TaskDetailPage() {
   const showLogViewer =
     task.status === "running" ||
     task.status === "completed" ||
+    task.status === "closed" ||
     task.status === "failed";
 
   return (

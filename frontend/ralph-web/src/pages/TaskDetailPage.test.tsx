@@ -72,6 +72,18 @@ const mockOpenTask = {
   pid: null,
 };
 
+// Task with "closed" status - this is what the database actually uses
+// for successfully completed tasks (not "completed")
+const mockClosedTask = {
+  ...mockTask,
+  id: "task-005",
+  status: "closed",
+  completedAt: "2024-01-15T11:30:00Z",
+  durationMs: 3600000, // 1 hour
+  executionSummary: "Task completed successfully.",
+  exitCode: 0,
+};
+
 // Mock EnhancedLogViewer component
 vi.mock("@/components/tasks/EnhancedLogViewer", () => ({
   EnhancedLogViewer: vi.fn(({ taskId }: { taskId: string }) => (
@@ -518,6 +530,23 @@ describe("TaskDetailPage", () => {
 
       // Then: Log viewer should not be present
       expect(screen.queryByTestId("log-viewer")).not.toBeInTheDocument();
+    });
+
+    it("renders log viewer for closed tasks (database status for completed)", async () => {
+      // Given: A closed task (this is the actual database status for completed tasks)
+      // The database uses "closed", not "completed", for successfully finished tasks
+      const { trpc } = await import("@/trpc");
+      vi.mocked(trpc.task.get.useQuery).mockReturnValue({
+        data: mockClosedTask,
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof trpc.task.get.useQuery>);
+
+      // When: The page is rendered
+      renderWithRouter("task-005");
+
+      // Then: Log viewer should be present (users need to see logs for finished tasks)
+      expect(screen.getByTestId("log-viewer")).toBeInTheDocument();
     });
   });
 
