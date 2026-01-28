@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Archive,
   GitMerge,
+  Trash2,
 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { LiveStatus } from "./LiveStatus";
 import { trpc } from "@/trpc";
 import { LoopBadge } from "./LoopBadge";
+import { WorktreeBadge } from "./WorktreeBadge";
 import { type LoopDetailData } from "./LoopDetail";
 
 /**
@@ -56,6 +58,8 @@ export interface Task {
   // PID field for task↔loop mapping per spec lines 65-68
   // Backend must populate this from ProcessSupervisor for running tasks
   pid?: number | null;
+  // Loop ID for direct task↔loop mapping (preferred over PID)
+  loopId?: string | null;
 }
 
 interface TaskThreadProps {
@@ -202,6 +206,11 @@ const TaskThreadComponent = forwardRef<HTMLDivElement, TaskThreadProps>(function
       utils.loops.list.invalidate();
     },
   });
+  const discardMutation = trpc.loops.discard.useMutation({
+    onSuccess: () => {
+      utils.loops.list.invalidate();
+    },
+  });
 
   const handleRun = useCallback(
     (e: MouseEvent) => {
@@ -222,11 +231,21 @@ const TaskThreadComponent = forwardRef<HTMLDivElement, TaskThreadProps>(function
   const handleMerge = useCallback(
     (e: MouseEvent) => {
       e.stopPropagation();
-      if (loop) {
+      if (loop && window.confirm("Merge this worktree branch into main?")) {
         mergeMutation.mutate({ id: loop.id });
       }
     },
     [loop, mergeMutation]
+  );
+
+  const handleDiscard = useCallback(
+    (e: MouseEvent) => {
+      e.stopPropagation();
+      if (loop && window.confirm("Discard this worktree? This cannot be undone.")) {
+        discardMutation.mutate({ id: loop.id });
+      }
+    },
+    [loop, discardMutation]
   );
 
   const handleNavigate = useCallback(() => {
@@ -238,13 +257,15 @@ const TaskThreadComponent = forwardRef<HTMLDivElement, TaskThreadProps>(function
     [task.updatedAt]
   );
 
-  const isExecuting = runMutation.isPending || retryMutation.isPending || mergeMutation.isPending;
+  const isExecuting = runMutation.isPending || retryMutation.isPending || mergeMutation.isPending || discardMutation.isPending;
 
-  // Determine if merge button should be shown
-  // Per spec: Show merge button for tasks with worktree loops that are in "queued" status
+  // Determine if merge/discard buttons should be shown
+  // Per spec: Show for worktree loops in "queued" or "needs-review" status
+  // Hide for running and merging states
   const isWorktreeLoop = loop && loop.location !== "(in-place)";
-  const canMerge = isWorktreeLoop && loop?.status === "queued";
-  const isMergeBlocked = canMerge && loop?.mergeButtonState?.state === "blocked";
+  const loopStatus = loop?.status;
+  const showMergeDiscardButtons = isWorktreeLoop && (loopStatus === "queued" || loopStatus === "needs-review");
+  const isMergeBlocked = showMergeDiscardButtons && loop?.mergeButtonState?.state === "blocked";
   const mergeTooltip = isMergeBlocked && loop?.mergeButtonState?.reason
     ? loop.mergeButtonState.reason
     : "Merge this branch into main";
@@ -303,6 +324,9 @@ const TaskThreadComponent = forwardRef<HTMLDivElement, TaskThreadProps>(function
               </span>
             )}
 
+            {/* Worktree badge - only shown for non-primary (worktree) loops */}
+            {isWorktreeLoop && loop && <WorktreeBadge loopId={loop.id} className="shrink-0" />}
+
             {/* Loop badge - only shown when a loop match exists */}
             {loop && <LoopBadge status={loop.status} className="shrink-0" />}
 
@@ -318,7 +342,7 @@ const TaskThreadComponent = forwardRef<HTMLDivElement, TaskThreadProps>(function
             <span className="flex-1" />
 
             {/* Merge button for worktree tasks - per explicit-merge-loop-ux spec */}
-            {canMerge && (
+            {showMergeDiscardButtons && (
               <Button
                 size="sm"
                 variant={isMergeBlocked ? "ghost" : "default"}
@@ -337,6 +361,25 @@ const TaskThreadComponent = forwardRef<HTMLDivElement, TaskThreadProps>(function
                   <GitMerge className="h-3 w-3" />
                 )}
                 <span className="ml-1">Merge</span>
+              </Button>
+            )}
+
+            {/* Discard button for worktree tasks */}
+            {showMergeDiscardButtons && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="shrink-0 h-6 px-2 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                onClick={handleDiscard}
+                disabled={isExecuting}
+                title="Discard this worktree"
+              >
+                {discardMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3 w-3" />
+                )}
+                <span className="ml-1">Discard</span>
               </Button>
             )}
 

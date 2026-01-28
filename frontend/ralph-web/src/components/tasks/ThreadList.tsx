@@ -13,12 +13,10 @@
  */
 
 import { useMemo, useEffect, useRef, useState, useCallback } from "react";
-import { Inbox, RefreshCw, Bell, BellOff, Archive, Layers } from "lucide-react";
+import { Inbox, RefreshCw, Bell, BellOff, Archive } from "lucide-react";
 import { trpc } from "@/trpc";
 import { TaskThread, type Task } from "./TaskThread";
 import { type LoopDetailData } from "./LoopDetail";
-import { LoopBadge } from "./LoopBadge";
-import { LoopActions, type LoopActionCallbacks } from "./LoopActions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -98,7 +96,18 @@ export function ThreadList({ pollingInterval = 5000, className }: ThreadListProp
     }
   );
 
-  // Create PID-based mapping from task PID to loop (per spec lines 65-68)
+  // Create loop ID mapping for direct task↔loop association
+  // Maps loop IDs to their loop data for O(1) lookup when rendering tasks
+  const loopIdToLoopMap = useMemo(() => {
+    if (!loopsQuery.data) return new Map<string, LoopDetailData>();
+    const map = new Map<string, LoopDetailData>();
+    for (const loop of loopsQuery.data as LoopDetailData[]) {
+      map.set(loop.id, loop);
+    }
+    return map;
+  }, [loopsQuery.data]);
+
+  // Create PID-based mapping from task PID to loop (fallback for legacy tasks)
   // Maps loop PIDs to their loop data for O(1) lookup when rendering tasks
   const pidToLoopMap = useMemo(() => {
     if (!loopsQuery.data) return new Map<number, LoopDetailData>();
@@ -111,14 +120,21 @@ export function ThreadList({ pollingInterval = 5000, className }: ThreadListProp
     return map;
   }, [loopsQuery.data]);
 
-  // Helper to get loop for a task via PID mapping
-  // Returns the matching loop if task has a PID that matches a loop's PID
+  // Helper to get loop for a task - checks loopId first, falls back to PID
   const getLoopForTask = useCallback(
     (task: Task): LoopDetailData | undefined => {
-      if (!task.pid) return undefined;
-      return pidToLoopMap.get(task.pid);
+      // Prefer loopId (direct association)
+      if (task.loopId) {
+        const loopById = loopIdToLoopMap.get(task.loopId);
+        if (loopById) return loopById;
+      }
+      // Fallback to PID-based mapping
+      if (task.pid) {
+        return pidToLoopMap.get(task.pid);
+      }
+      return undefined;
     },
-    [pidToLoopMap]
+    [loopIdToLoopMap, pidToLoopMap]
   );
 
   const archiveAfterDays = Math.max(1, Number(archiveAfterDaysInput) || 1);
@@ -177,47 +193,6 @@ export function ThreadList({ pollingInterval = 5000, className }: ThreadListProp
       setIsArchiving(false);
     }
   }, [archiveCandidates, archiveMutation, isArchiving, utils]);
-
-  // Loop action mutations
-  const stopLoopMutation = trpc.loops.stop.useMutation({
-    onSuccess: () => utils.loops.list.invalidate(),
-  });
-  const retryLoopMutation = trpc.loops.retry.useMutation({
-    onSuccess: () => utils.loops.list.invalidate(),
-  });
-  const mergeLoopMutation = trpc.loops.merge.useMutation({
-    onSuccess: () => utils.loops.list.invalidate(),
-  });
-  const discardLoopMutation = trpc.loops.discard.useMutation({
-    onSuccess: () => utils.loops.list.invalidate(),
-  });
-
-  // Loop action callbacks for LoopActions component
-  const loopActionCallbacks: LoopActionCallbacks = useMemo(
-    () => ({
-      onStop: async (id: string, force?: boolean) => {
-        await stopLoopMutation.mutateAsync({ id, force });
-      },
-      onRetry: async (id: string) => {
-        await retryLoopMutation.mutateAsync({ id });
-      },
-      onMerge: async (id: string, force?: boolean) => {
-        await mergeLoopMutation.mutateAsync({ id, force });
-      },
-      onDiscard: async (id: string) => {
-        await discardLoopMutation.mutateAsync({ id });
-      },
-    }),
-    [stopLoopMutation, retryLoopMutation, mergeLoopMutation, discardLoopMutation]
-  );
-
-  // Filter loops to show in the active loops section (non-terminal, actionable loops)
-  const activeLoops = useMemo(() => {
-    if (!loopsQuery.data) return [];
-    return (loopsQuery.data as LoopDetailData[]).filter(
-      (loop) => !["merged", "discarded"].includes(loop.status)
-    );
-  }, [loopsQuery.data]);
 
   // Extract task IDs for keyboard navigation
   const taskIds = useMemo(() => sortedTasks.map((task) => task.id), [sortedTasks]);
@@ -471,46 +446,6 @@ export function ThreadList({ pollingInterval = 5000, className }: ThreadListProp
           </Button>
         </div>
       </div>
-
-      {/* Active Loops section - shows running/actionable loops with action buttons */}
-      {activeLoops.length > 0 && (
-        <div className="rounded-lg border bg-card p-3">
-          <div className="flex items-center gap-2 mb-3">
-            <Layers className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">
-              Active Loops ({activeLoops.length})
-            </h3>
-          </div>
-          <div className="space-y-2">
-            {activeLoops.map((loop) => (
-              <div
-                key={loop.id}
-                className="flex items-center justify-between gap-3 py-2 px-3 rounded-md bg-muted/50"
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <LoopBadge status={loop.status} showPrefix={false} />
-                  <span
-                    className="text-sm text-muted-foreground truncate"
-                    title={loop.prompt}
-                  >
-                    {loop.prompt?.slice(0, 60) || loop.id}
-                    {loop.prompt && loop.prompt.length > 60 && "..."}
-                  </span>
-                </div>
-                <div className="flex-shrink-0">
-                  <LoopActions
-                    id={loop.id}
-                    status={loop.status}
-                    isGitWorkspace={!!loop.location && loop.location !== "(in-place)"}
-                    callbacks={loopActionCallbacks}
-                    mergeButtonState={loop.mergeButtonState}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Task threads */}
       <div className="space-y-2" role="list" aria-label="Task list">

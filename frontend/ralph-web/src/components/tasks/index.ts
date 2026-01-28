@@ -15,3 +15,4 @@ export { TaskCardSkeleton } from "./TaskCardSkeleton";
 export { TaskDetailHeader, type TaskDetailHeaderProps, type TaskAction } from "./TaskDetailHeader";
 export { TaskStatusBar, type TaskStatusBarProps } from "./TaskStatusBar";
 export { TaskMetadataGrid, type TaskMetadataGridProps } from "./TaskMetadataGrid";
+export { WorktreeBadge } from "./WorktreeBadge";

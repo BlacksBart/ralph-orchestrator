@@ -16,7 +16,6 @@ import { trpc } from "../trpc";
 import { CollectionBuilder } from "@/components/builder";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Plus,
   FolderOpen,
@@ -294,7 +293,6 @@ export function BuilderPage() {
             </p>
           </div>
         </div>
-        <Badge variant="secondary">Beta</Badge>
       </header>
 
       {/* Content */}

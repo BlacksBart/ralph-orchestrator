@@ -16,6 +16,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import { trpc } from "@/trpc";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,91 +25,18 @@ import {
   TaskCardSkeleton,
   EmptyState,
   TaskDetailHeader,
-  TaskStatusBar,
   TaskMetadataGrid,
+  LoopBadge,
   type LoopDetailData,
 } from "@/components/tasks";
 import {
   AlertTriangle,
   Loader2,
   GitMerge,
-  CheckCircle2,
-  FileText,
-  GitCommit,
   AlertCircle,
   FileQuestion,
 } from "lucide-react";
 import type { TaskAction } from "@/components/tasks/TaskDetailHeader";
-
-/**
- * ExecutionSummary Component
- *
- * Displays task execution results with special handling for merge loops.
- * Shows merge-specific information (commit SHA) when the associated loop
- * has been successfully merged.
- */
-function ExecutionSummary({
-  summary,
-  loop,
-}: {
-  summary: string;
-  loop?: LoopDetailData;
-}) {
-  const isMerged = loop?.status === "merged";
-  const mergeCommit = loop?.mergeCommit;
-
-  return (
-    <div
-      className={`rounded-lg border ${
-        isMerged
-          ? "border-green-500/30 bg-green-500/5"
-          : "border-border bg-muted/50"
-      }`}
-      data-testid="execution-summary"
-    >
-      {/* Header */}
-      <div
-        className={`flex items-center gap-2 px-4 py-3 border-b ${
-          isMerged ? "border-green-500/20" : "border-border"
-        }`}
-      >
-        {isMerged ? (
-          <CheckCircle2 className="h-5 w-5 text-green-500" />
-        ) : (
-          <FileText className="h-5 w-5 text-muted-foreground" />
-        )}
-        <h3
-          className={`font-semibold ${
-            isMerged
-              ? "text-green-700 dark:text-green-400"
-              : "text-muted-foreground"
-          }`}
-        >
-          {isMerged ? "Merge Complete" : "Execution Summary"}
-        </h3>
-      </div>
-
-      {/* Merge commit info (for merged loops) */}
-      {isMerged && mergeCommit && (
-        <div
-          className="flex items-center gap-2 px-4 py-2 border-b border-green-500/20 bg-green-500/10"
-          data-testid="merge-commit-info"
-        >
-          <GitCommit className="h-4 w-4 text-green-600 dark:text-green-400" />
-          <span className="text-sm text-muted-foreground">Merge commit:</span>
-          <code className="text-sm font-mono text-green-700 dark:text-green-400">
-            {mergeCommit.slice(0, 8)}
-          </code>
-        </div>
-      )}
-
-      {/* Summary content */}
-      <div className="p-4">
-        <div className="whitespace-pre-wrap text-sm">{summary}</div>
-      </div>
-    </div>
-  );
-}
 
 export function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -279,15 +207,19 @@ export function TaskDetailPage() {
         isDeletePending={deleteMutation.isPending}
       />
 
-      {/* Page title - full prompt display */}
-      <h1 className="text-xl font-semibold">{task.title}</h1>
+      {/* Page title - full prompt display with markdown rendering */}
+      <div className="markdown-prose">
+        <ReactMarkdown>{task.title}</ReactMarkdown>
+      </div>
 
-      {/* Status bar with badges */}
-      <TaskStatusBar
-        status={taskStatus}
-        loopId={associatedLoop?.id}
-        loopStatus={associatedLoop?.status}
-      />
+      {/* Loop badge (if associated with a loop) */}
+      {associatedLoop && (
+        <LoopBadge
+          status={associatedLoop.status}
+          onClick={() => navigate(`/loops/${associatedLoop.id}`)}
+          showPrefix={true}
+        />
+      )}
 
       {/* Metadata grid - two column layout */}
       <TaskMetadataGrid
@@ -295,11 +227,6 @@ export function TaskDetailPage() {
         // Future: Pass metrics when backend supports token/cost tracking
         // metrics={{ tokensIn: task.tokensIn, tokensOut: task.tokensOut, estimatedCost: task.estimatedCost }}
       />
-
-      {/* Execution summary (for completed tasks) */}
-      {task.executionSummary && (
-        <ExecutionSummary summary={task.executionSummary} loop={associatedLoop} />
-      )}
 
       {/* User steering UI for needs-review loops */}
       {associatedLoop?.status === "needs-review" && (

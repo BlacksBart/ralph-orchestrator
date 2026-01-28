@@ -7,7 +7,9 @@
  */
 
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { ArrowLeft, Loader2, Trash2, Circle, Check, XCircle, CheckCircle2 } from "lucide-react";
 
 export type TaskStatus = "open" | "running" | "completed" | "closed" | "failed";
 export type TaskAction = "run" | "cancel" | "retry";
@@ -48,6 +50,48 @@ function getActionForStatus(status: TaskStatus): { action: TaskAction; label: st
   }
 }
 
+/**
+ * Status badge configuration
+ */
+interface StatusConfig {
+  label: string;
+  icon: typeof Loader2;
+  variant: "default" | "secondary" | "destructive" | "outline";
+  iconClass?: string;
+  badgeClass?: string;
+}
+
+const STATUS_MAP: Record<TaskStatus, StatusConfig> = {
+  open: {
+    label: "Open",
+    icon: Circle,
+    variant: "secondary",
+  },
+  running: {
+    label: "Running",
+    icon: Loader2,
+    variant: "outline",
+    iconClass: "animate-spin",
+    badgeClass: "bg-blue-500/10 border-blue-500/20 text-blue-400",
+  },
+  completed: {
+    label: "Completed",
+    icon: CheckCircle2,
+    variant: "outline",
+    badgeClass: "bg-green-500/10 border-green-500/20 text-green-400",
+  },
+  failed: {
+    label: "Failed",
+    icon: XCircle,
+    variant: "destructive",
+  },
+  closed: {
+    label: "Closed",
+    icon: Check,
+    variant: "secondary",
+  },
+};
+
 export function TaskDetailHeader({
   status,
   onBack,
@@ -58,19 +102,35 @@ export function TaskDetailHeader({
   isDeletePending = false,
 }: TaskDetailHeaderProps) {
   const actionConfig = getActionForStatus(status);
+  const statusConfig = STATUS_MAP[status];
+  const StatusIcon = statusConfig.icon;
 
   return (
     <div className="flex justify-between items-center">
-      <Button
-        variant="ghost"
-        className="gap-1"
-        onClick={onBack}
-      >
-        <ArrowLeft className="lucide-arrow-left" />
-        Back to Tasks
-      </Button>
+      <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          className="gap-1"
+          onClick={onBack}
+        >
+          <ArrowLeft className="lucide-arrow-left" />
+          Back to Tasks
+        </Button>
 
-      <div className="flex gap-2">
+        {/* Status badge */}
+        <Badge
+          variant={statusConfig.variant}
+          className={cn("gap-1", statusConfig.badgeClass)}
+        >
+          <StatusIcon
+            className={cn("h-3 w-3", statusConfig.iconClass)}
+            aria-hidden="true"
+          />
+          <span>{statusConfig.label}</span>
+        </Badge>
+      </div>
+
+      <div className="flex items-center gap-2">
         {showDelete && (
           <Button
             variant="destructive"
