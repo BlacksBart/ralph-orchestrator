@@ -462,20 +462,32 @@ pub async fn run_loop_impl(
             }
         }
 
-        // Handle completion for worktree loops (auto-merge or manual)
+        // Handle completion for all loops (landing + merge queue for worktrees)
         // Per spec: merge loops do NOT enqueue themselves, even if run in worktree context
         if let Some(ctx) = context {
-            if merge_loop_id.is_none()
-                && !ctx.is_primary()
-                && matches!(reason, TerminationReason::CompletionPromise)
-            {
+            if merge_loop_id.is_none() && matches!(reason, TerminationReason::CompletionPromise) {
                 let handler = LoopCompletionHandler::new(auto_merge);
                 match handler.handle_completion(ctx, prompt) {
                     Ok(CompletionAction::None) => {
-                        debug!("Primary loop completed, no action needed");
+                        debug!("Loop completed, no action needed");
                     }
-                    Ok(CompletionAction::Enqueued { loop_id }) => {
+                    Ok(CompletionAction::Landed { landing }) => {
+                        info!(
+                            committed = landing.committed,
+                            handoff = %landing.handoff_path,
+                            open_tasks = landing.open_task_count,
+                            "Primary loop landed successfully"
+                        );
+                    }
+                    Ok(CompletionAction::Enqueued { loop_id, landing }) => {
                         info!(loop_id = %loop_id, "Loop queued for auto-merge");
+                        if let Some(ref l) = landing {
+                            debug!(
+                                committed = l.committed,
+                                handoff = %l.handoff_path,
+                                "Landing completed before enqueue"
+                            );
+                        }
                         if let Some(hist) = history {
                             let _ = hist.record_merge_queued();
                         }
@@ -485,12 +497,20 @@ pub async fn run_loop_impl(
                     Ok(CompletionAction::ManualMerge {
                         loop_id,
                         worktree_path,
+                        landing,
                     }) => {
                         info!(
                             loop_id = %loop_id,
                             "Loop completed. To merge manually: cd {} && git merge",
                             worktree_path
                         );
+                        if let Some(ref l) = landing {
+                            debug!(
+                                committed = l.committed,
+                                handoff = %l.handoff_path,
+                                "Landing completed (manual merge mode)"
+                            );
+                        }
                     }
                     Err(e) => {
                         warn!("Completion handler failed: {}", e);

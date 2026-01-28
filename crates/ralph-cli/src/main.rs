@@ -1075,8 +1075,14 @@ async fn run_command(
                     existing.prompt.chars().take(50).collect::<String>()
                 );
 
-                let loop_id = generate_loop_id();
                 let worktree_config = WorktreeConfig::default();
+
+                // Generate human-readable loop ID from prompt
+                let name_generator =
+                    ralph_core::LoopNameGenerator::from_config(&config.features.loop_naming);
+                let loop_id = name_generator.generate_unique(&prompt_summary, |name| {
+                    ralph_core::worktree_exists(workspace_root, name, &worktree_config)
+                });
 
                 // Ensure worktree directory is in .gitignore
                 ensure_gitignore(workspace_root, ".worktrees")
@@ -1186,23 +1192,6 @@ async fn run_command(
     }
 
     Ok(())
-}
-
-/// Generates a unique loop ID for worktree-based parallel loops.
-///
-/// Format: `ralph-YYYYMMDD-HHMMSS-XXXX` where XXXX is a random hex suffix.
-fn generate_loop_id() -> String {
-    use std::time::SystemTime;
-
-    let timestamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-
-    // Generate 4-character random hex suffix
-    let random_suffix: u16 = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| (d.as_nanos() & 0xFFFF) as u16)
-        .unwrap_or(0);
-
-    format!("ralph-{}-{:04x}", timestamp, random_suffix)
 }
 
 /// Resume a previously interrupted loop from existing scratchpad.
