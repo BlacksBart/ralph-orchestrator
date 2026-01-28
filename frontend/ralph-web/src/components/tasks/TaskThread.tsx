@@ -249,12 +249,18 @@ const TaskThreadComponent = forwardRef<HTMLDivElement, TaskThreadProps>(function
     ? loop.mergeButtonState.reason
     : "Merge this branch into main";
 
+  // Visual distinction for merge-related loop tasks
+  // Shows when loop is in merging, needs-review, or merged state
+  const isMergeLoopTask = loop && ["merging", "needs-review", "merged"].includes(loop.status);
+
   return (
     <Card
       ref={ref}
       className={cn(
         "transition-all duration-200 cursor-pointer hover:bg-accent/50",
         isFocused && "ring-2 ring-primary bg-accent/30",
+        // Visual distinction for merge loop tasks: green left border
+        isMergeLoopTask && "border-l-4 border-l-green-500/60",
         className
       )}
       onClick={handleNavigate}
