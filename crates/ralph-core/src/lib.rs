@@ -48,7 +48,7 @@ pub mod utils;
 pub mod workspace;
 pub mod worktree;
 
-pub use chaos_mode::{ChaosModeState, CHAOS_COMPLETION_PROMISE};
+pub use chaos_mode::{CHAOS_COMPLETION_PROMISE, ChaosModeState};
 pub use cli_capture::{CliCapture, CliCapturePair};
 pub use config::{
     ChaosModeConfig, ChaosOutput, CliConfig, CoreConfig, EventLoopConfig, EventMetadata,

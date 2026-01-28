@@ -428,7 +428,11 @@ fn test_loop_thrashing_detection() {
     write_event_to_jsonl(&events_path, "build.blocked", "Fix bug\nCan't compile");
     let _ = event_loop.process_events_from_jsonl();
 
-    write_event_to_jsonl(&events_path, "build.blocked", "Fix bug\nStill can't compile");
+    write_event_to_jsonl(
+        &events_path,
+        "build.blocked",
+        "Fix bug\nStill can't compile",
+    );
     let _ = event_loop.process_events_from_jsonl();
 
     write_event_to_jsonl(&events_path, "build.blocked", "Fix bug\nReally stuck");

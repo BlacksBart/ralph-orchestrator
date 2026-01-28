@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { EnhancedLogViewer } from "@/components/tasks/EnhancedLogViewer";
-import { AlertTriangle, Send, Loader2, GitMerge, CheckCircle2, FileText, GitCommit, AlertCircle, FileQuestion } from "lucide-react";
+import { AlertTriangle, Send, Loader2, GitMerge, CheckCircle2, FileText, GitCommit, AlertCircle, FileQuestion, Trash2 } from "lucide-react";
 import { TaskCardSkeleton } from "@/components/tasks/TaskCardSkeleton";
 import { EmptyState } from "@/components/tasks/EmptyState";
 import { type LoopDetailData } from "@/components/tasks/LoopDetail";
@@ -169,6 +169,11 @@ export function TaskDetailPage() {
   const runMutation = trpc.task.run.useMutation();
   const retryMutation = trpc.task.retry.useMutation();
   const cancelMutation = trpc.task.cancel.useMutation();
+  const deleteMutation = trpc.task.delete.useMutation({
+    onSuccess: () => {
+      navigate("/tasks");
+    },
+  });
   const retryMergeMutation = trpc.loops.retry.useMutation({
     onSuccess: () => {
       utils.loops.list.invalidate();
@@ -184,6 +189,17 @@ export function TaskDetailPage() {
       steeringInput: steeringInput.trim() || undefined,
     });
   }, [associatedLoop, retryMergeMutation, steeringInput]);
+
+  // Handle task deletion with confirmation
+  const handleDelete = useCallback(() => {
+    if (!task) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this task?\n\n"${task.title}"\n\nThis action cannot be undone.`
+    );
+    if (confirmed) {
+      deleteMutation.mutate({ id: task.id });
+    }
+  }, [task, deleteMutation]);
 
   // Keyboard navigation - Escape to go back
   useEffect(() => {
@@ -237,6 +253,8 @@ export function TaskDetailPage() {
   const showRunButton = task.status === "open";
   const showCancelButton = task.status === "running";
   const showRetryButton = task.status === "failed";
+  // Allow deletion only for terminal states (failed or closed)
+  const showDeleteButton = task.status === "failed" || task.status === "closed";
 
   // Determine if log viewer should be shown (for running or completed tasks)
   const showLogViewer =
@@ -385,6 +403,25 @@ export function TaskDetailPage() {
             disabled={retryMutation.isPending}
           >
             Retry
+          </Button>
+        )}
+        {showDeleteButton && (
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </>
+            )}
           </Button>
         )}
       </div>
