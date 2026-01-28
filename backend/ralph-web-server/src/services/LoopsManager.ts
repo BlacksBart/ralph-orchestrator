@@ -17,8 +17,19 @@ import { EventEmitter } from "events";
 
 export interface LoopStatus {
   id: string;
-  status: "running" | "completed" | "failed" | "merging" | "stuck";
+  status: "running" | "completed" | "failed" | "merging" | "stuck" | "queued";
   location: string;
+  pid?: number;
+  prompt?: string;
+}
+
+/**
+ * State of the merge button for a loop.
+ * Active means merge can proceed, blocked means it cannot.
+ */
+export interface MergeButtonState {
+  state: "active" | "blocked";
+  reason?: string;
 }
 
 export interface LoopsManagerOptions {
@@ -167,6 +178,16 @@ export class LoopsManager extends EventEmitter {
       args.push("--force");
     }
     await this.runRalphCommand(args);
+  }
+
+  /**
+   * Get merge button state for a loop.
+   * Returns whether merge is active (can proceed) or blocked (with reason).
+   */
+  async getMergeButtonState(loopId: string): Promise<MergeButtonState> {
+    const output = await this.runRalphCommand(["loops", "merge-button-state", loopId]);
+    const result = JSON.parse(output);
+    return result as MergeButtonState;
   }
 
   /**
