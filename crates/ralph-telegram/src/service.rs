@@ -208,6 +208,9 @@ impl TelegramService {
         let handler = MessageHandler::new(handler_state_manager, &workspace_root);
         let mut offset: i32 = 0;
 
+        // Register bot commands with Telegram API
+        Self::register_commands(&bot).await;
+
         info!(loop_id = %loop_id, "Telegram polling task started");
 
         while !shutdown.load(Ordering::Relaxed) {
@@ -235,6 +238,28 @@ impl TelegramService {
                         let chat_id = msg.chat.id.0;
                         let reply_to: Option<i32> = msg.reply_to_message().map(|r| r.id.0);
 
+                        info!(
+                            chat_id = chat_id,
+                            text = %text,
+                            "Received Telegram message"
+                        );
+
+                        // Handle bot commands before routing to handler
+                        if crate::commands::is_command(text)
+                            && let Some(response) =
+                                crate::commands::handle_command(text, &workspace_root)
+                        {
+                            use teloxide::payloads::SendMessageSetters;
+                            let send_result = bot
+                                .send_message(teloxide::types::ChatId(chat_id), &response)
+                                .parse_mode(teloxide::types::ParseMode::Html)
+                                .await;
+                            if let Err(e) = send_result {
+                                warn!(error = %e, "Failed to send command response");
+                            }
+                            continue;
+                        }
+
                         let mut state = match state_manager.load_or_default() {
                             Ok(s) => s,
                             Err(e) => {
@@ -242,12 +267,6 @@ impl TelegramService {
                                 continue;
                             }
                         };
-
-                        info!(
-                            chat_id = chat_id,
-                            text = %text,
-                            "Received Telegram message"
-                        );
 
                         match handler.handle_message(&mut state, text, chat_id, reply_to) {
                             Ok(topic) => {
@@ -296,6 +315,25 @@ impl TelegramService {
         }
 
         info!(loop_id = %loop_id, "Telegram polling task stopped");
+    }
+
+    /// Register bot commands with the Telegram API so they appear in the menu.
+    async fn register_commands(bot: &teloxide::Bot) {
+        use teloxide::requests::Requester;
+        use teloxide::types::BotCommand;
+
+        let commands = vec![
+            BotCommand::new("status", "Current loop status"),
+            BotCommand::new("tasks", "Open tasks"),
+            BotCommand::new("memories", "Recent memories"),
+            BotCommand::new("tail", "Last 20 events"),
+            BotCommand::new("help", "List available commands"),
+        ];
+
+        match bot.set_my_commands(commands).await {
+            Ok(_) => info!("Registered bot commands with Telegram API"),
+            Err(e) => warn!(error = %e, "Failed to register bot commands"),
+        }
     }
 
     /// Stop the Telegram service gracefully.

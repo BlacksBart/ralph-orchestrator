@@ -16,6 +16,7 @@
 //! - [`error`] — Error types for startup, send, and receive failures
 
 mod bot;
+pub mod commands;
 mod error;
 mod handler;
 mod service;
