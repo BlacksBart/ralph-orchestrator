@@ -27,7 +27,7 @@ export RALPH_TELEGRAM_BOT_TOKEN="your-bot-token"
 
 ```yaml
 # ralph.yml
-human:
+RObot:
   enabled: true
   timeout_seconds: 300
   telegram:
@@ -64,7 +64,7 @@ Humans can send messages at any time (not as replies to questions):
 
 1. Message is written as a `human.guidance` event to `events.jsonl`
 2. On the next iteration, guidance events are collected and squashed
-3. A `## HUMAN GUIDANCE` section is injected into the agent's prompt
+3. A `## ROBOT GUIDANCE` section is injected into the agent's prompt
 
 ### Parallel Loop Routing
 

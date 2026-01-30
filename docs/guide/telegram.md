@@ -22,7 +22,7 @@ export RALPH_TELEGRAM_BOT_TOKEN="your-bot-token"
 
 ```yaml
 # ralph.yml
-human:
+RObot:
   enabled: true
   timeout_seconds: 300
   telegram:
@@ -42,7 +42,7 @@ The bot sends a greeting message on startup. The chat ID is auto-detected from t
 ## Configuration Reference
 
 ```yaml
-human:
+RObot:
   enabled: true                    # Enable human-in-the-loop (default: false)
   timeout_seconds: 300             # How long to block waiting for a response
   checkin_interval_seconds: 120    # Periodic status updates (optional)
@@ -60,7 +60,7 @@ human:
 For long-running loops, increase `timeout_seconds` and set `checkin_interval_seconds`:
 
 ```yaml
-human:
+RObot:
   enabled: true
   timeout_seconds: 43200            # 12 hours
   checkin_interval_seconds: 900     # Check in every 15 minutes
@@ -86,7 +86,7 @@ You can send messages at any time (not as replies to a question):
 
 1. Your message is written as a `human.guidance` event to `events.jsonl`
 2. On the next iteration, all guidance events are collected and squashed into a numbered list
-3. A `## HUMAN GUIDANCE` section is injected into the agent's prompt
+3. A `## ROBOT GUIDANCE` section is injected into the agent's prompt
 
 This lets you steer the agent without waiting for it to ask.
 
@@ -209,7 +209,7 @@ All tests use a `MockBot` implementation of `BotApi` — no Telegram API calls a
 
 - Verify your bot token: `curl https://api.telegram.org/bot<TOKEN>/getMe`
 - Make sure you've sent at least one message to the bot (for chat ID auto-detection)
-- Check that `human.enabled: true` is set in your config
+- Check that `RObot.enabled: true` is set in your config
 
 ### Messages go to the wrong loop
 

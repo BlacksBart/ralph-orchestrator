@@ -66,7 +66,7 @@ frontend/      → Web dashboard (@ralph-web/dashboard) - React + Vite + Tailwin
 - **Merge queue**: `crates/ralph-core/src/merge_queue.rs`
 - **CLI commands**: `crates/ralph-cli/src/loops.rs`, `task_cli.rs`
 - **Telegram integration**: `crates/ralph-telegram/src/` (bot, service, state, handler)
-- **Human config**: `crates/ralph-core/src/config.rs` (`HumanConfig`, `TelegramBotConfig`)
+- **RObot config**: `crates/ralph-core/src/config.rs` (`RobotConfig`, `TelegramBotConfig`)
 - **Web server**: `backend/ralph-web-server/src/` (tRPC routes in `api/`, runners in `runner/`)
 - **Web dashboard**: `frontend/ralph-web/src/` (React components in `components/`)
 
@@ -175,7 +175,7 @@ cargo run -p ralph-e2e -- --list             # List scenarios
 
 Reports generated in `.e2e-tests/`.
 
-## Human-in-the-Loop
+## RObot (Human-in-the-Loop)
 
 Ralph supports human interaction during orchestration via Telegram. Agents can ask questions and humans can send proactive guidance.
 
@@ -183,7 +183,7 @@ Ralph supports human interaction during orchestration via Telegram. Agents can a
 
 ```yaml
 # ralph.yml
-human:
+RObot:
   enabled: true
   timeout_seconds: 300    # How long to block waiting for a response
   telegram:
@@ -196,7 +196,7 @@ human:
 |-------|-----------|---------|
 | `interact.human` | Agent to Human | Agent asks a question; loop blocks until response or timeout |
 | `human.response` | Human to Agent | Reply to an `interact.human` question |
-| `human.guidance` | Human to Agent | Proactive guidance injected as `## HUMAN GUIDANCE` in prompt |
+| `human.guidance` | Human to Agent | Proactive guidance injected as `## ROBOT GUIDANCE` in prompt |
 
 ### How It Works
 

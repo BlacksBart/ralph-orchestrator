@@ -163,6 +163,14 @@ impl TelegramService {
         &self.loop_id
     }
 
+    /// Returns a clone of the shutdown flag.
+    ///
+    /// Signal handlers can set this flag to interrupt `wait_for_response()`
+    /// without waiting for the full timeout.
+    pub fn shutdown_flag(&self) -> Arc<AtomicBool> {
+        self.shutdown.clone()
+    }
+
     /// Start the Telegram service.
     ///
     /// Spawns a background polling task on the host tokio runtime to receive
@@ -625,6 +633,17 @@ impl TelegramService {
                         .remove_pending_question(&mut state, &self.loop_id);
                 }
 
+                return Ok(None);
+            }
+
+            // Check if we've been interrupted (Ctrl+C / SIGTERM / SIGHUP)
+            if self.shutdown.load(Ordering::Relaxed) {
+                info!(loop_id = %self.loop_id, "Interrupted while waiting for human.response");
+                if let Ok(mut state) = self.state_manager.load_or_default() {
+                    let _ = self
+                        .state_manager
+                        .remove_pending_question(&mut state, &self.loop_id);
+                }
                 return Ok(None);
             }
 
@@ -1180,5 +1199,34 @@ mod tests {
         assert_eq!(ctx.open_tasks, 3);
         assert_eq!(ctx.closed_tasks, 5);
         assert!((ctx.cumulative_cost - 1.2345).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn wait_for_response_returns_none_on_shutdown() {
+        let dir = TempDir::new().unwrap();
+        let service = TelegramService::new(
+            dir.path().to_path_buf(),
+            Some("token".to_string()),
+            60, // long timeout — shutdown flag should preempt it
+            "main".to_string(),
+        )
+        .unwrap();
+
+        let events_path = dir.path().join("events.jsonl");
+        std::fs::File::create(&events_path).unwrap();
+
+        // Set shutdown flag before calling wait_for_response
+        service.shutdown_flag().store(true, Ordering::Relaxed);
+
+        let start = Instant::now();
+        let result = service.wait_for_response(&events_path).unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(result, None, "should return None when shutdown flag is set");
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "should return quickly, not wait for timeout (elapsed: {:?})",
+            elapsed
+        );
     }
 }

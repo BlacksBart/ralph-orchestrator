@@ -31,9 +31,9 @@ skills:
     ralph-diagnostics:
       auto_inject: true
 
-human:
+RObot:
   enabled: true
-  timeout_seconds: 43200 
+  timeout_seconds: 43200
   checkin_interval_seconds: 900
 
 hats:

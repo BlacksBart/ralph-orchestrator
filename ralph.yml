@@ -130,10 +130,10 @@ hats:
       3. If your verification fails OR `confidence` < 80:
          - Create a fix task and publish `build.task`.
 
-# Human-in-the-loop — enable Telegram bot for ask.human / human.guidance
+# RObot (Ralph-Orchestrator bot) — enable Telegram bot for ask.human / human.guidance
 # Requires a Telegram bot token (create one via @BotFather).
 # Set RALPH_TELEGRAM_BOT_TOKEN env var or provide bot_token below.
-# human:
+# RObot:
 #   enabled: true
 #   timeout_seconds: 300
 #   telegram:
