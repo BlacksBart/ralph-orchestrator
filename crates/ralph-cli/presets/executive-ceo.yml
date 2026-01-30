@@ -9,9 +9,9 @@
 event_loop:
   prompt_file: "PROMPT.md"
   completion_promise: "LOOP_COMPLETE"
-  starting_event: "task.start"
-  max_iterations: 120
-  max_runtime_seconds: 14400
+  starting_event: "work.start"
+  max_iterations: 999999999
+  max_runtime_seconds: 999999999
   checkpoint_interval: 5
 
 cli:
@@ -19,13 +19,29 @@ cli:
 
 core:
   specs_dir: "./specs/"
+  guardrails:
+    - "Learn and remember the CEOs preferences."
+    - "You MUST emit one event at a time. This is a single-threaded loop."
+
+skills:
+  enabled: true
+  dirs:
+    - ".claude/skills"
+  overrides:
+    ralph-diagnostics:
+      auto_inject: true
+
+RObot:
+  enabled: true
+  timeout_seconds: 43200
+  checkin_interval_seconds: 900
 
 hats:
   chief_of_staff:
     name: "Chief of Staff"
     description: "Orchestrates exec input, decides CEO escalation, and drives iteration."
     triggers:
-      ["task.start", "product.ready", "tech.ready", "ops.ready", "execution.blocked", "quality.issues", "improvement.findings", "ceo.decision"]
+      ["work.start", "product.ready", "tech.ready", "ops.ready", "execution.blocked", "quality.issues", "improvement.findings", "ceo.decision"]
     publishes: ["product.request", "tech.request", "ops.request", "execution.request", "interact.human"]
     instructions: |
       ## CHIEF OF STAFF MODE
