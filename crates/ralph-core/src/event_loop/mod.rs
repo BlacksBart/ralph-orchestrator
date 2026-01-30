@@ -18,6 +18,7 @@ use crate::loop_context::LoopContext;
 use crate::memory_store::{MarkdownMemoryStore, format_memories_as_markdown, truncate_to_budget};
 use crate::skill_registry::SkillRegistry;
 use ralph_proto::{Event, EventBus, Hat, HatId};
+use ralph_telegram::TelegramService;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -124,6 +125,9 @@ pub struct EventLoop {
     loop_context: Option<LoopContext>,
     /// Skill registry for the current loop.
     skill_registry: SkillRegistry,
+    /// Telegram service for human-in-the-loop communication.
+    /// Only initialized when `human.enabled` is true and this is the primary loop.
+    telegram_service: Option<TelegramService>,
 }
 
 impl EventLoop {
@@ -242,6 +246,10 @@ impl EventLoop {
             .unwrap_or_else(|_| context.events_path());
         let event_reader = EventReader::new(&events_path);
 
+        // Initialize Telegram service if human-in-the-loop is enabled
+        // and this is the primary loop (has a loop context with is_primary).
+        let telegram_service = Self::create_telegram_service(&config, Some(&context));
+
         Self {
             config,
             registry,
@@ -253,6 +261,7 @@ impl EventLoop {
             diagnostics,
             loop_context: Some(context),
             skill_registry,
+            telegram_service,
         }
     }
 
@@ -333,6 +342,10 @@ impl EventLoop {
             .unwrap_or_else(|_| ".ralph/events.jsonl".to_string());
         let event_reader = EventReader::new(&events_path);
 
+        // Initialize Telegram service if human-in-the-loop is enabled.
+        // Legacy single-loop mode (no context) is treated as primary.
+        let telegram_service = Self::create_telegram_service(&config, None);
+
         Self {
             config,
             registry,
@@ -344,6 +357,65 @@ impl EventLoop {
             diagnostics,
             loop_context: None,
             skill_registry,
+            telegram_service,
+        }
+    }
+
+    /// Attempts to create and start a `TelegramService` if human-in-the-loop is enabled.
+    ///
+    /// The service is only created when:
+    /// - `human.enabled` is `true` in config
+    /// - This is the primary loop (holds `.ralph/loop.lock`), or no context is provided
+    ///   (legacy single-loop mode, treated as primary)
+    ///
+    /// Returns `None` if the service should not be started or if startup fails.
+    fn create_telegram_service(
+        config: &RalphConfig,
+        context: Option<&LoopContext>,
+    ) -> Option<TelegramService> {
+        if !config.human.enabled {
+            return None;
+        }
+
+        // Only the primary loop starts the Telegram service.
+        // If we have a context, check is_primary. No context = legacy single-loop = primary.
+        if let Some(ctx) = context
+            && !ctx.is_primary()
+        {
+            debug!(
+                workspace = %ctx.workspace().display(),
+                "Skipping Telegram service: not the primary loop"
+            );
+            return None;
+        }
+
+        let workspace_root = context
+            .map(|ctx| ctx.workspace().to_path_buf())
+            .unwrap_or_else(|| config.core.workspace_root.clone());
+
+        let bot_token = config.human.resolve_bot_token();
+        let timeout_secs = config.human.timeout_seconds.unwrap_or(300);
+        let loop_id = context
+            .and_then(|ctx| ctx.loop_id().map(String::from))
+            .unwrap_or_else(|| "main".to_string());
+
+        match TelegramService::new(workspace_root, bot_token, timeout_secs, loop_id) {
+            Ok(service) => {
+                if let Err(e) = service.start() {
+                    warn!(error = %e, "Failed to start Telegram service");
+                    return None;
+                }
+                info!(
+                    bot_token = %service.bot_token_masked(),
+                    timeout_secs = service.timeout_secs(),
+                    "Telegram human-in-the-loop service active"
+                );
+                Some(service)
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to create Telegram service");
+                None
+            }
         }
     }
 
@@ -581,14 +653,28 @@ impl EventLoop {
             if self.registry.is_empty() {
                 // Solo mode - just Ralph's events, no hats to filter
                 let events = self.bus.take_pending(&hat_id.clone());
-                let events_context = events
+
+                // Separate human.guidance events from regular events
+                let (guidance_events, regular_events): (Vec<_>, Vec<_>) = events
+                    .into_iter()
+                    .partition(|e| e.topic.as_str() == "human.guidance");
+
+                let events_context = regular_events
                     .iter()
                     .map(|e| Self::format_event(e))
                     .collect::<Vec<_>>()
                     .join("\n");
 
+                // Inject human guidance into prompt if present
+                if !guidance_events.is_empty() {
+                    let guidance: Vec<String> =
+                        guidance_events.into_iter().map(|e| e.payload).collect();
+                    self.ralph.set_human_guidance(guidance);
+                }
+
                 // Build base prompt and prepend memories + scratchpad if available
                 let base_prompt = self.ralph.build_prompt(&events_context, &[]);
+                self.ralph.clear_human_guidance();
                 let with_skills = self.prepend_auto_inject_skills(base_prompt);
                 let final_prompt = self.prepend_scratchpad(with_skills);
 
@@ -628,13 +714,26 @@ impl EventLoop {
                     self.bus.publish(event);
                 }
 
-                // Determine which hats are active based on events
-                let active_hat_ids = self.determine_active_hat_ids(&all_events);
+                // Separate human.guidance events from regular events
+                let (guidance_events, regular_events): (Vec<_>, Vec<_>) = all_events
+                    .into_iter()
+                    .partition(|e| e.topic.as_str() == "human.guidance");
+
+                // Inject human guidance before building prompt (must happen before
+                // immutable borrows from determine_active_hats)
+                if !guidance_events.is_empty() {
+                    let guidance: Vec<String> =
+                        guidance_events.into_iter().map(|e| e.payload).collect();
+                    self.ralph.set_human_guidance(guidance);
+                }
+
+                // Determine which hats are active based on regular events
+                let active_hat_ids = self.determine_active_hat_ids(&regular_events);
                 self.record_hat_activations(&active_hat_ids);
-                let active_hats = self.determine_active_hats(&all_events);
+                let active_hats = self.determine_active_hats(&regular_events);
 
                 // Format events for context
-                let events_context = all_events
+                let events_context = regular_events
                     .iter()
                     .map(|e| Self::format_event(e))
                     .collect::<Vec<_>>()
@@ -642,8 +741,6 @@ impl EventLoop {
 
                 // Build base prompt and prepend memories + scratchpad if available
                 let base_prompt = self.ralph.build_prompt(&events_context, &active_hats);
-                let with_skills = self.prepend_auto_inject_skills(base_prompt);
-                let final_prompt = self.prepend_scratchpad(with_skills);
 
                 // Build prompt with active hats - filters instructions to only active hats
                 debug!(
@@ -653,6 +750,12 @@ impl EventLoop {
                         .map(|h| h.id.as_str())
                         .collect::<Vec<_>>()
                 );
+
+                // Clear guidance after active_hats references are no longer needed
+                self.ralph.clear_human_guidance();
+                let with_skills = self.prepend_auto_inject_skills(base_prompt);
+                let final_prompt = self.prepend_scratchpad(with_skills);
+
                 return Some(final_prompt);
             }
         }
@@ -1384,6 +1487,69 @@ impl EventLoop {
             self.state.last_blocked_hat = None;
         }
 
+        // Handle ask.human blocking behavior:
+        // When an ask.human event is detected and Telegram service is active,
+        // send the question and block until human.response or timeout.
+        let mut response_event = None;
+        let ask_human_idx = validated_events
+            .iter()
+            .position(|e| e.topic == "ask.human".into());
+
+        if let Some(idx) = ask_human_idx {
+            let ask_event = &validated_events[idx];
+            let payload = ask_event.payload.clone();
+
+            if let Some(ref telegram_service) = self.telegram_service {
+                info!(
+                    payload = %payload,
+                    "ask.human event detected — sending question via Telegram"
+                );
+
+                // Send the question
+                match telegram_service.send_question(&payload) {
+                    Ok(_message_id) => {
+                        // Block: poll events file for human.response
+                        let events_path = self
+                            .loop_context
+                            .as_ref()
+                            .map(|ctx| ctx.events_path())
+                            .unwrap_or_else(|| PathBuf::from(".ralph/events.jsonl"));
+
+                        match telegram_service.wait_for_response(&events_path) {
+                            Ok(Some(response)) => {
+                                info!(
+                                    response = %response,
+                                    "Received human.response — continuing loop"
+                                );
+                                // Create a human.response event to inject into the bus
+                                response_event = Some(Event::new("human.response", &response));
+                            }
+                            Ok(None) => {
+                                warn!(
+                                    timeout_secs = telegram_service.timeout_secs(),
+                                    "Human response timeout — continuing without response"
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    error = %e,
+                                    "Error waiting for human response — continuing without response"
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            error = %e,
+                            "Failed to send ask.human question — continuing without blocking"
+                        );
+                    }
+                }
+            } else {
+                debug!("ask.human event detected but no Telegram service active — passing through");
+            }
+        }
+
         // Publish validated events
         for event in validated_events {
             // Log all events from JSONL (whether orphaned or not)
@@ -1412,6 +1578,15 @@ impl EventLoop {
             }
         }
 
+        // Publish human.response event if one was received during blocking
+        if let Some(response) = response_event {
+            info!(
+                topic = %response.topic,
+                "Publishing human.response event from Telegram"
+            );
+            self.bus.publish(response);
+        }
+
         Ok(has_orphans)
     }
 
@@ -1429,6 +1604,9 @@ impl EventLoop {
     ///
     /// Returns the event for logging purposes.
     pub fn publish_terminate_event(&mut self, reason: &TerminationReason) -> Event {
+        // Stop the Telegram service if it was running
+        self.stop_telegram_service();
+
         let elapsed = self.state.elapsed();
         let duration_str = format_duration(elapsed);
 
@@ -1457,6 +1635,25 @@ impl EventLoop {
         );
 
         event
+    }
+
+    /// Returns a reference to the Telegram service, if active.
+    pub fn telegram_service(&self) -> Option<&TelegramService> {
+        self.telegram_service.as_ref()
+    }
+
+    /// Returns a mutable reference to the Telegram service, if active.
+    pub fn telegram_service_mut(&mut self) -> Option<&mut TelegramService> {
+        self.telegram_service.as_mut()
+    }
+
+    /// Stops the Telegram service if it's running.
+    ///
+    /// Called during loop termination to cleanly shut down the bot.
+    fn stop_telegram_service(&mut self) {
+        if let Some(service) = self.telegram_service.take() {
+            service.stop();
+        }
     }
 
     // -------------------------------------------------------------------------

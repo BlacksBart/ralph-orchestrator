@@ -24,6 +24,9 @@ pub struct HatlessRalph {
     /// Pre-built skill index section for prompt injection.
     /// Set by EventLoop after SkillRegistry is initialized.
     skill_index: String,
+    /// Collected human guidance messages for injection into prompts.
+    /// Set by EventLoop before build_prompt(), cleared after injection.
+    human_guidance: Vec<String>,
 }
 
 /// Hat topology for multi-hat mode prompt generation.
@@ -166,6 +169,7 @@ impl HatlessRalph {
             memories_enabled: false, // Default: scratchpad-only mode
             objective: None,
             skill_index: String::new(),
+            human_guidance: Vec::new(),
         }
     }
 
@@ -196,6 +200,46 @@ impl HatlessRalph {
         self.objective = Some(objective);
     }
 
+    /// Sets human guidance messages collected from `human.guidance` events.
+    ///
+    /// Called by `EventLoop::build_prompt()` before `HatlessRalph::build_prompt()`.
+    /// Multiple guidance messages are squashed into a numbered list and injected
+    /// as a `## HUMAN GUIDANCE` section in the prompt.
+    pub fn set_human_guidance(&mut self, guidance: Vec<String>) {
+        self.human_guidance = guidance;
+    }
+
+    /// Clears stored human guidance after it has been injected into a prompt.
+    ///
+    /// Called by `EventLoop::build_prompt()` after `HatlessRalph::build_prompt()`.
+    pub fn clear_human_guidance(&mut self) {
+        self.human_guidance.clear();
+    }
+
+    /// Collects human guidance and returns the formatted prompt section.
+    ///
+    /// Squashes multiple guidance messages into a numbered list format.
+    /// Returns an empty string if no guidance is pending.
+    fn collect_human_guidance(&self) -> String {
+        if self.human_guidance.is_empty() {
+            return String::new();
+        }
+
+        let mut section = String::from("## HUMAN GUIDANCE\n\n");
+
+        if self.human_guidance.len() == 1 {
+            section.push_str(&self.human_guidance[0]);
+        } else {
+            for (i, guidance) in self.human_guidance.iter().enumerate() {
+                section.push_str(&format!("{}. {}\n", i + 1, guidance));
+            }
+        }
+
+        section.push_str("\n\n");
+
+        section
+    }
+
     /// Builds Ralph's prompt with filtered instructions for only active hats.
     ///
     /// This method reduces token usage by including instructions only for hats
@@ -215,6 +259,12 @@ impl HatlessRalph {
         // Add prominent OBJECTIVE section first (stored at initialization, persists across all iterations)
         if let Some(ref obj) = self.objective {
             prompt.push_str(&self.objective_section(obj));
+        }
+
+        // Inject human guidance (collected from human.guidance events, cleared after injection)
+        let guidance = self.collect_human_guidance();
+        if !guidance.is_empty() {
+            prompt.push_str(&guidance);
         }
 
         // Include pending events BEFORE workflow so Ralph sees the task first
@@ -2263,6 +2313,139 @@ hats:
         assert!(
             !prompt.contains("**CONSTRAINT:**"),
             "Solo mode should NOT have CONSTRAINT"
+        );
+    }
+
+    // === Human Guidance Injection Tests ===
+
+    #[test]
+    fn test_single_guidance_injection() {
+        // Single human.guidance message should be injected as-is (no numbered list)
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let mut ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+        ralph.set_human_guidance(vec!["Focus on error handling first".to_string()]);
+
+        let prompt = ralph.build_prompt("", &[]);
+
+        assert!(
+            prompt.contains("## HUMAN GUIDANCE"),
+            "Should include HUMAN GUIDANCE section"
+        );
+        assert!(
+            prompt.contains("Focus on error handling first"),
+            "Should contain the guidance message"
+        );
+        // Single message should NOT be numbered
+        assert!(
+            !prompt.contains("1. Focus on error handling first"),
+            "Single guidance should not be numbered"
+        );
+    }
+
+    #[test]
+    fn test_multiple_guidance_squashing() {
+        // Multiple human.guidance messages should be squashed into a numbered list
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let mut ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+        ralph.set_human_guidance(vec![
+            "Focus on error handling".to_string(),
+            "Use the existing retry pattern".to_string(),
+            "Check edge cases for empty input".to_string(),
+        ]);
+
+        let prompt = ralph.build_prompt("", &[]);
+
+        assert!(
+            prompt.contains("## HUMAN GUIDANCE"),
+            "Should include HUMAN GUIDANCE section"
+        );
+        assert!(
+            prompt.contains("1. Focus on error handling"),
+            "First guidance should be numbered 1"
+        );
+        assert!(
+            prompt.contains("2. Use the existing retry pattern"),
+            "Second guidance should be numbered 2"
+        );
+        assert!(
+            prompt.contains("3. Check edge cases for empty input"),
+            "Third guidance should be numbered 3"
+        );
+    }
+
+    #[test]
+    fn test_guidance_appears_in_prompt_before_events() {
+        // HUMAN GUIDANCE should appear after OBJECTIVE but before PENDING EVENTS
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let mut ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+        ralph.set_objective("Build feature X".to_string());
+        ralph.set_human_guidance(vec!["Use the new API".to_string()]);
+
+        let prompt = ralph.build_prompt("Event: build.task - Do the work", &[]);
+
+        let objective_pos = prompt.find("## OBJECTIVE").expect("Should have OBJECTIVE");
+        let guidance_pos = prompt
+            .find("## HUMAN GUIDANCE")
+            .expect("Should have HUMAN GUIDANCE");
+        let events_pos = prompt
+            .find("## PENDING EVENTS")
+            .expect("Should have PENDING EVENTS");
+
+        assert!(
+            objective_pos < guidance_pos,
+            "OBJECTIVE ({}) should come before HUMAN GUIDANCE ({})",
+            objective_pos,
+            guidance_pos
+        );
+        assert!(
+            guidance_pos < events_pos,
+            "HUMAN GUIDANCE ({}) should come before PENDING EVENTS ({})",
+            guidance_pos,
+            events_pos
+        );
+    }
+
+    #[test]
+    fn test_guidance_cleared_after_injection() {
+        // After build_prompt consumes guidance, clear_human_guidance should leave it empty
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let mut ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+        ralph.set_human_guidance(vec!["First guidance".to_string()]);
+
+        // First prompt should include guidance
+        let prompt1 = ralph.build_prompt("", &[]);
+        assert!(
+            prompt1.contains("## HUMAN GUIDANCE"),
+            "First prompt should have guidance"
+        );
+
+        // Clear guidance (as EventLoop would)
+        ralph.clear_human_guidance();
+
+        // Second prompt should NOT include guidance
+        let prompt2 = ralph.build_prompt("", &[]);
+        assert!(
+            !prompt2.contains("## HUMAN GUIDANCE"),
+            "After clearing, prompt should not have guidance"
+        );
+    }
+
+    #[test]
+    fn test_no_injection_when_no_guidance() {
+        // When no guidance events, prompt should not have HUMAN GUIDANCE section
+        let config = RalphConfig::default();
+        let registry = HatRegistry::new();
+        let ralph = HatlessRalph::new("LOOP_COMPLETE", config.core.clone(), &registry, None);
+
+        let prompt = ralph.build_prompt("Event: build.task - Do the work", &[]);
+
+        assert!(
+            !prompt.contains("## HUMAN GUIDANCE"),
+            "Should NOT include HUMAN GUIDANCE when no guidance set"
         );
     }
 }
