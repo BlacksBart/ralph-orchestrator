@@ -543,6 +543,11 @@ pub struct EventLoopConfig {
     #[serde(default = "default_max_failures")]
     pub max_consecutive_failures: u32,
 
+    /// Delay in seconds before starting the next iteration.
+    /// Skipped when the next iteration is triggered by a human event.
+    #[serde(default)]
+    pub cooldown_delay_seconds: u64,
+
     /// Starting hat for multi-hat mode (deprecated, use starting_event instead).
     pub starting_hat: Option<String>,
 
@@ -588,6 +593,7 @@ impl Default for EventLoopConfig {
             max_runtime_seconds: default_max_runtime(),
             max_cost_usd: None,
             max_consecutive_failures: default_max_failures(),
+            cooldown_delay_seconds: 0,
             starting_hat: None,
             starting_event: None,
         }

@@ -590,6 +590,24 @@ impl EventLoop {
         self.bus.next_hat_with_pending().is_some()
     }
 
+    /// Checks if any pending events are human-related (human.response, human.guidance).
+    ///
+    /// Used to skip cooldown delays when a human event is next, since we don't
+    /// want to artificially delay the response to a human interaction.
+    pub fn has_pending_human_events(&self) -> bool {
+        self.bus.hat_ids().any(|hat_id| {
+            self.bus
+                .peek_pending(hat_id)
+                .map(|events| {
+                    events.iter().any(|e| {
+                        let topic = e.topic.as_str();
+                        topic == "human.response" || topic == "human.guidance"
+                    })
+                })
+                .unwrap_or(false)
+        })
+    }
+
     /// Gets the topics a hat is allowed to publish.
     ///
     /// Used to build retry prompts when the LLM forgets to publish an event.

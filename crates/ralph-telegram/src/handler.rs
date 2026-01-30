@@ -51,12 +51,13 @@ impl MessageHandler {
         };
 
         let timestamp = Utc::now().to_rfc3339();
-        let event_line = format!(
-            "EVENT: {} | message: \"{}\" | timestamp: \"{}\"",
-            topic,
-            text.replace('"', "\\\""),
-            timestamp
-        );
+        let event_json = serde_json::json!({
+            "topic": topic,
+            "payload": text,
+            "ts": timestamp,
+        });
+        let event_line = serde_json::to_string(&event_json)
+            .expect("event JSON serialization should not fail");
 
         self.append_event(&events_path, &event_line)?;
 
@@ -187,8 +188,9 @@ mod tests {
 
         let events_path = dir.path().join(".ralph/events.jsonl");
         let contents = std::fs::read_to_string(events_path).unwrap();
-        assert!(contents.contains("EVENT: human.guidance"));
-        assert!(contents.contains("don't forget logging"));
+        let event: serde_json::Value = serde_json::from_str(contents.trim()).unwrap();
+        assert_eq!(event["topic"], "human.guidance");
+        assert_eq!(event["payload"], "don't forget logging");
     }
 
     #[test]
@@ -210,8 +212,9 @@ mod tests {
 
         let events_path = dir.path().join(".ralph/events.jsonl");
         let contents = std::fs::read_to_string(events_path).unwrap();
-        assert!(contents.contains("EVENT: human.response"));
-        assert!(contents.contains("use async"));
+        let event: serde_json::Value = serde_json::from_str(contents.trim()).unwrap();
+        assert_eq!(event["topic"], "human.response");
+        assert_eq!(event["payload"], "use async");
 
         // Pending question should be removed
         assert!(!state.pending_questions.contains_key("main"));
@@ -228,7 +231,8 @@ mod tests {
             .path()
             .join(".worktrees/feature-auth/.ralph/events.jsonl");
         let contents = std::fs::read_to_string(events_path).unwrap();
-        assert!(contents.contains("EVENT: human.guidance"));
+        let event: serde_json::Value = serde_json::from_str(contents.trim()).unwrap();
+        assert_eq!(event["topic"], "human.guidance");
     }
 
     #[test]

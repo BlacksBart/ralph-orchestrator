@@ -1032,7 +1032,15 @@ pub async fn run_loop_impl(
             );
         }
 
-        // Note: Interrupt handling moved into tokio::select! above for immediate termination
+        // Cooldown delay between iterations (skip for human events)
+        let cooldown = config.event_loop.cooldown_delay_seconds;
+        if cooldown > 0 && !event_loop.has_pending_human_events() {
+            debug!(
+                delay_seconds = cooldown,
+                "Cooldown delay before next iteration"
+            );
+            tokio::time::sleep(Duration::from_secs(cooldown)).await;
+        }
     }
 }
 
