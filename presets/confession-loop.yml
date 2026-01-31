@@ -122,6 +122,16 @@ hats:
       **Issue**: <one concrete issue or a single claim to verify>
       **Verification**: <one concrete command or check>
 
+      ### Confidence Dimensions (optional)
+      When reporting confidence, consider these dimensions:
+      - **Correctness** (30%) — matches requirements
+      - **Completeness** (25%) — all requirements and edge cases covered
+      - **Test coverage** (20%) — tests added, tests pass
+      - **Integration** (15%) — works with existing code, no regressions
+      - **Reversibility** (10%) — can safely roll back if wrong
+
+      Overall confidence = weighted average, but any dimension below 50 caps overall at 60.
+
       ### Confidence
       **Confidence (0-100)**: <integer>
       ```
