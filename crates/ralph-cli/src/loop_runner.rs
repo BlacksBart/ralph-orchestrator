@@ -2154,4 +2154,65 @@ mod tests {
         assert_eq!(events.len(), 1);
     }
 
+    #[test]
+    fn test_check_planning_session_responses_for_session_no_context_is_ok() {
+        let config = RalphConfig::default();
+        let mut event_loop = EventLoop::new(config);
+
+        let published = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let published_clone = std::sync::Arc::clone(&published);
+        event_loop
+            .bus()
+            .add_observer(move |event| published_clone.lock().unwrap().push(event.clone()));
+
+        check_planning_session_responses_for_session(&mut event_loop, "session-no-context")
+            .expect("check responses");
+
+        assert!(published.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_check_planning_session_responses_skips_invalid_json() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let session_id = format!(
+            "session-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+
+        let mut config = RalphConfig::default();
+        config.core.workspace_root = temp_dir.path().to_path_buf();
+        let ctx = ralph_core::LoopContext::primary(temp_dir.path().to_path_buf());
+        let mut event_loop = EventLoop::with_context(config, ctx.clone());
+
+        let conversation_path = ctx.planning_conversation_path(&session_id);
+        std::fs::create_dir_all(conversation_path.parent().expect("parent"))
+            .expect("create conversation dir");
+
+        let prompt_entry = ConversationEntry {
+            entry_type: ConversationType::UserPrompt,
+            id: "prompt-1".to_string(),
+            text: "Choose one".to_string(),
+            ts: "2026-01-31T00:00:00Z".to_string(),
+        };
+        let conversation = format!(
+            "not-json\n{}\n",
+            serde_json::to_string(&prompt_entry).expect("serialize prompt")
+        );
+        std::fs::write(&conversation_path, conversation).expect("write conversation");
+
+        let published = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let published_clone = std::sync::Arc::clone(&published);
+        event_loop
+            .bus()
+            .add_observer(move |event| published_clone.lock().unwrap().push(event.clone()));
+
+        check_planning_session_responses_for_session(&mut event_loop, &session_id)
+            .expect("check responses");
+
+        assert!(published.lock().unwrap().is_empty());
+    }
+
 }

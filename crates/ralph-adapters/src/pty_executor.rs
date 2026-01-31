@@ -1995,6 +1995,76 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn test_run_observe_streaming_text_routes_output() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let backend = CliBackend {
+            command: "sh".to_string(),
+            args: vec!["-c".to_string()],
+            prompt_mode: PromptMode::Arg,
+            prompt_flag: None,
+            output_format: OutputFormat::Text,
+        };
+        let config = PtyConfig {
+            interactive: false,
+            idle_timeout_secs: 0,
+            cols: 80,
+            rows: 24,
+            workspace_root: temp_dir.path().to_path_buf(),
+        };
+        let executor = PtyExecutor::new(backend, config);
+        let (_tx, rx) = tokio::sync::watch::channel(false);
+        let mut handler = CapturingHandler::default();
+
+        let result = executor
+            .run_observe_streaming("printf 'alpha\\nbeta\\n'", rx, &mut handler)
+            .await
+            .expect("run_observe_streaming");
+
+        assert!(result.success);
+        let captured = handler.texts.join("");
+        assert!(captured.contains("alpha"), "captured: {captured}");
+        assert!(captured.contains("beta"), "captured: {captured}");
+        assert!(handler.completions.is_empty());
+        assert!(result.extracted_text.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_run_observe_streaming_parses_stream_json() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let backend = CliBackend {
+            command: "sh".to_string(),
+            args: vec!["-c".to_string()],
+            prompt_mode: PromptMode::Arg,
+            prompt_flag: None,
+            output_format: OutputFormat::StreamJson,
+        };
+        let config = PtyConfig {
+            interactive: false,
+            idle_timeout_secs: 0,
+            cols: 80,
+            rows: 24,
+            workspace_root: temp_dir.path().to_path_buf(),
+        };
+        let executor = PtyExecutor::new(backend, config);
+        let (_tx, rx) = tokio::sync::watch::channel(false);
+        let mut handler = CapturingHandler::default();
+
+        let script = r#"printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello stream"}]}}' '{"type":"result","duration_ms":1,"total_cost_usd":0.0,"num_turns":1,"is_error":false}'"#;
+        let result = executor
+            .run_observe_streaming(script, rx, &mut handler)
+            .await
+            .expect("run_observe_streaming");
+
+        assert!(result.success);
+        assert!(handler.texts.iter().any(|text| text.contains("Hello stream")));
+        assert_eq!(handler.completions.len(), 1);
+        assert!(result.extracted_text.contains("Hello stream"));
+        assert_eq!(result.termination, TerminationType::Natural);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn test_run_interactive_in_tui_mode() {
         let temp_dir = TempDir::new().expect("temp dir");
         let backend = CliBackend {
