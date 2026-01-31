@@ -1068,6 +1068,78 @@ mod tests {
         })
     }
 
+    #[test]
+    fn test_normalize_token_trims_and_discards_empty() {
+        assert_eq!(normalize_token(None), None);
+        assert_eq!(
+            normalize_token(Some("  token-123  ".to_string())),
+            Some("token-123".to_string())
+        );
+        assert_eq!(normalize_token(Some("   ".to_string())), None);
+    }
+
+    #[test]
+    fn test_resolve_token_from_prefers_env_then_keychain_then_config() {
+        let resolved = resolve_token_from(
+            Some("  env-token  ".to_string()),
+            Some("key-token".to_string()),
+            Some("config-token".to_string()),
+        );
+        assert_eq!(resolved.as_deref(), Some("env-token"));
+
+        let resolved = resolve_token_from(
+            Some("   ".to_string()),
+            Some("  key-token  ".to_string()),
+            Some("config-token".to_string()),
+        );
+        assert_eq!(resolved.as_deref(), Some("key-token"));
+
+        let resolved = resolve_token_from(None, None, Some("  cfg  ".to_string()));
+        assert_eq!(resolved.as_deref(), Some("cfg"));
+    }
+
+    #[tokio::test]
+    async fn test_run_daemon_rejects_builtin_config() {
+        let sources = vec![ConfigSource::Builtin("tdd".to_string())];
+        let err = run_daemon(DaemonArgs {}, &sources, false)
+            .await
+            .expect_err("expected builtin config error");
+        assert!(
+            err.to_string().contains("Builtin presets are not supported"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_daemon_rejects_remote_config() {
+        let sources = vec![ConfigSource::Remote(
+            "https://example.com/ralph.yml".to_string(),
+        )];
+        let err = run_daemon(DaemonArgs {}, &sources, false)
+            .await
+            .expect_err("expected remote config error");
+        assert!(
+            err.to_string().contains("Remote config URLs are not supported"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_daemon_errors_on_missing_config_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let _lock = test_lock();
+        let _cwd = CwdGuard::set(temp_dir.path());
+
+        let sources = vec![ConfigSource::File(PathBuf::from("missing.yml"))];
+        let err = run_daemon(DaemonArgs {}, &sources, false)
+            .await
+            .expect_err("expected missing config error");
+        assert!(
+            err.to_string().contains("Config file not found"),
+            "unexpected error: {err}"
+        );
+    }
+
 
     #[test]
     fn test_save_telegram_state_creates_file() {
