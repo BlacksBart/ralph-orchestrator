@@ -399,6 +399,15 @@ impl RalphConfig {
             });
         }
 
+        if let Some(threshold) = self.event_loop.mutation_score_warn_threshold
+            && !(0.0..=100.0).contains(&threshold)
+        {
+            warnings.push(ConfigWarning::InvalidValue {
+                field: "event_loop.mutation_score_warn_threshold".to_string(),
+                message: "Value must be between 0 and 100".to_string(),
+            });
+        }
+
         // Check adapter tool_permissions (dropped field)
         if self.adapters.claude.tool_permissions.is_some()
             || self.adapters.gemini.tool_permissions.is_some()
@@ -565,6 +574,12 @@ pub struct EventLoopConfig {
     /// event from the hat topology.
     pub starting_event: Option<String>,
 
+    /// Warn when mutation testing score drops below this percentage (0-100).
+    ///
+    /// Warning-only: build.done is still accepted even if below threshold.
+    #[serde(default)]
+    pub mutation_score_warn_threshold: Option<f64>,
+
     /// When true, LOOP_COMPLETE does not terminate the loop.
     ///
     /// Instead of exiting, the loop injects a `task.resume` event and continues
@@ -608,6 +623,7 @@ impl Default for EventLoopConfig {
             cooldown_delay_seconds: 0,
             starting_hat: None,
             starting_event: None,
+            mutation_score_warn_threshold: None,
             persistent: false,
         }
     }
@@ -1457,33 +1473,41 @@ pub enum ConfigError {
     #[error("YAML parse error: {0}")]
     Yaml(#[from] serde_yaml::Error),
 
-    #[error("Ambiguous routing: trigger '{trigger}' is claimed by both '{hat1}' and '{hat2}'")]
+    #[error(
+        "Ambiguous routing: trigger '{trigger}' is claimed by both '{hat1}' and '{hat2}'.\nFix: ensure only one hat claims this trigger or delegate with a new event.\nSee: docs/reference/troubleshooting.md#ambiguous-routing"
+    )]
     AmbiguousRouting {
         trigger: String,
         hat1: String,
         hat2: String,
     },
 
-    #[error("Mutually exclusive fields: '{field1}' and '{field2}' cannot both be specified")]
+    #[error(
+        "Mutually exclusive fields: '{field1}' and '{field2}' cannot both be specified.\nFix: remove one field or split into separate configs.\nSee: docs/reference/troubleshooting.md#mutually-exclusive-fields"
+    )]
     MutuallyExclusive { field1: String, field2: String },
 
     #[error("Invalid completion_promise: must be non-empty and non-whitespace")]
     InvalidCompletionPromise,
 
-    #[error("Custom backend requires a command - set 'cli.command' in config")]
+    #[error(
+        "Custom backend requires a command.\nFix: set 'cli.command' in your config (or run `ralph init --backend custom`).\nSee: docs/reference/troubleshooting.md#custom-backend-command"
+    )]
     CustomBackendRequiresCommand,
 
     #[error(
-        "Reserved trigger '{trigger}' used by hat '{hat}' - task.start and task.resume are reserved for Ralph (the coordinator). Use a delegated event like 'work.start' instead."
+        "Reserved trigger '{trigger}' used by hat '{hat}' - task.start and task.resume are reserved for Ralph (the coordinator). Use a delegated event like 'work.start' instead.\nSee: docs/reference/troubleshooting.md#reserved-trigger"
     )]
     ReservedTrigger { trigger: String, hat: String },
 
     #[error(
-        "Hat '{hat}' is missing required 'description' field - add a short description of the hat's purpose"
+        "Hat '{hat}' is missing required 'description' field - add a short description of the hat's purpose.\nSee: docs/reference/troubleshooting.md#missing-hat-description"
     )]
     MissingDescription { hat: String },
 
-    #[error("RObot config error: {field} - {hint}")]
+    #[error(
+        "RObot config error: {field} - {hint}\nSee: docs/reference/troubleshooting.md#robot-config"
+    )]
     RobotMissingField { field: String, hint: String },
 }
 
@@ -1981,6 +2005,26 @@ cli:
             "Should allow custom backend with command: {:?}",
             result.unwrap_err()
         );
+    }
+
+    #[test]
+    fn test_custom_backend_requires_command_message_actionable() {
+        let err = ConfigError::CustomBackendRequiresCommand;
+        let msg = err.to_string();
+        assert!(msg.contains("cli.command"));
+        assert!(msg.contains("ralph init --backend custom"));
+        assert!(msg.contains("docs/reference/troubleshooting.md#custom-backend-command"));
+    }
+
+    #[test]
+    fn test_reserved_trigger_message_actionable() {
+        let err = ConfigError::ReservedTrigger {
+            trigger: "task.start".to_string(),
+            hat: "builder".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("Reserved trigger"));
+        assert!(msg.contains("docs/reference/troubleshooting.md#reserved-trigger"));
     }
 
     #[test]

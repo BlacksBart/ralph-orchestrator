@@ -139,7 +139,7 @@ fn load_config(config_sources: &[ConfigSource]) -> Result<RalphConfig> {
             } else {
                 // User explicitly specified a config file that doesn't exist - this is an error
                 Err(anyhow::anyhow!(
-                    "Config file not found: {:?}\n\nTo use default configuration, omit the -c/--config flag.\nTo see available presets, run: ralph init --list-presets",
+                    "Config file not found: {:?}\n\nTo use default configuration, omit the -c/--config flag.\nTo see available presets, run: ralph init --list-presets\nSee: docs/reference/troubleshooting.md#config-not-found",
                     path
                 ))
             }

@@ -10,14 +10,18 @@ use std::path::Path;
 /// Errors that can occur during initialization.
 #[derive(Debug, thiserror::Error)]
 pub enum InitError {
-    #[error("ralph.yml already exists. Use --force to overwrite.")]
+    #[error(
+        "ralph.yml already exists. Use --force to overwrite.\nSee: docs/reference/troubleshooting.md#config-file-exists"
+    )]
     FileExists,
 
-    #[error("Unknown preset '{0}'. Available presets: {1}")]
+    #[error(
+        "Unknown preset '{0}'. Available presets: {1}\nSee: docs/reference/troubleshooting.md#unknown-preset"
+    )]
     UnknownPreset(String, String),
 
     #[error(
-        "Unknown backend '{0}'. Valid backends: claude, kiro, gemini, codex, amp, copilot, opencode, custom"
+        "Unknown backend '{0}'. Valid backends: claude, kiro, gemini, codex, amp, copilot, opencode, custom.\nSee: docs/reference/troubleshooting.md#unknown-backend"
     )]
     UnknownBackend(String),
 
@@ -280,6 +284,22 @@ mod tests {
         // but we can test the validation logic
         let result = init_from_backend("invalid-backend", false);
         assert!(matches!(result, Err(InitError::UnknownBackend(_))));
+    }
+
+    #[test]
+    fn test_unknown_backend_message_actionable() {
+        let err = InitError::UnknownBackend("invalid".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("Valid backends"));
+        assert!(msg.contains("docs/reference/troubleshooting.md#unknown-backend"));
+    }
+
+    #[test]
+    fn test_file_exists_message_actionable() {
+        let err = InitError::FileExists;
+        let msg = err.to_string();
+        assert!(msg.contains("--force"));
+        assert!(msg.contains("docs/reference/troubleshooting.md#config-file-exists"));
     }
 
     #[test]
