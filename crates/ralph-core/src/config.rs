@@ -564,6 +564,15 @@ pub struct EventLoopConfig {
     /// If not specified and hats are defined, Ralph will determine the appropriate
     /// event from the hat topology.
     pub starting_event: Option<String>,
+
+    /// When true, LOOP_COMPLETE does not terminate the loop.
+    ///
+    /// Instead of exiting, the loop injects a `task.resume` event and continues
+    /// idling until new work arrives (human guidance, Telegram commands, etc.).
+    /// The loop will only terminate on hard limits (max_iterations, max_runtime,
+    /// max_cost), consecutive failures, or explicit interrupt/stop.
+    #[serde(default)]
+    pub persistent: bool,
 }
 
 fn default_prompt_file() -> String {
@@ -599,6 +608,7 @@ impl Default for EventLoopConfig {
             cooldown_delay_seconds: 0,
             starting_hat: None,
             starting_event: None,
+            persistent: false,
         }
     }
 }

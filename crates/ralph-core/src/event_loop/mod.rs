@@ -558,6 +558,29 @@ impl EventLoop {
 
         self.state.completion_requested = false;
 
+        // In persistent mode, suppress completion and keep the loop alive
+        if self.config.event_loop.persistent {
+            info!("Completion event suppressed - persistent mode active, loop staying alive");
+
+            self.diagnostics.log_orchestration(
+                self.state.iteration,
+                "loop",
+                crate::diagnostics::OrchestrationEvent::LoopTerminated {
+                    reason: "completion_event_suppressed_persistent".to_string(),
+                },
+            );
+
+            // Inject a task.resume event so the loop continues with an idle prompt
+            let resume_event = Event::new(
+                "task.resume",
+                "Persistent mode: loop staying alive after completion signal. \
+                 Check for new tasks or await human guidance.",
+            );
+            self.bus.publish(resume_event);
+
+            return None;
+        }
+
         // Log warning if tasks remain open (informational only)
         if self.config.memories.enabled {
             if let Ok(false) = self.verify_tasks_complete() {
