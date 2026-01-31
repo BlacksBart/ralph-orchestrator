@@ -1242,6 +1242,26 @@ mod tests {
     }
 
     #[test]
+    fn test_save_robot_config_updates_existing_config() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let _lock = test_lock();
+        let _cwd = CwdGuard::set(temp_dir.path());
+
+        std::fs::write("ralph.yml", "cli:\n  backend: claude\n").unwrap();
+
+        save_robot_config(120, None).unwrap();
+
+        let content = std::fs::read_to_string("ralph.yml").unwrap();
+        let config: serde_yaml::Value = serde_yaml::from_str(&content).unwrap();
+        assert!(config.get("cli").is_some());
+        let robot = config.get("RObot").unwrap();
+        assert_eq!(
+            robot.get("timeout_seconds").and_then(|v| v.as_u64()),
+            Some(120)
+        );
+    }
+
+    #[test]
     fn test_load_config_bot_token_from_reads_token() {
         let temp_dir = tempfile::tempdir().unwrap();
         let config_path = temp_dir.path().join("custom.yml");
@@ -1288,6 +1308,26 @@ mod tests {
             .and_then(|t| t.get("bot_token"))
             .and_then(|v| v.as_str());
         assert_eq!(token, Some("new-token"));
+    }
+
+    #[test]
+    fn test_save_bot_token_config_updates_lowercase_robot_key() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_path = temp_dir.path().join("config.yml");
+        let yaml = "robot:\n  enabled: true\n";
+        std::fs::write(&config_path, yaml).unwrap();
+
+        save_bot_token_config(&config_path, "token-xyz").unwrap();
+
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        let config: serde_yaml::Value = serde_yaml::from_str(&content).unwrap();
+        let token = config
+            .get("robot")
+            .and_then(|r| r.get("telegram"))
+            .and_then(|t| t.get("bot_token"))
+            .and_then(|v| v.as_str());
+        assert_eq!(token, Some("token-xyz"));
+        assert!(config.get("RObot").is_none());
     }
 
     #[test]

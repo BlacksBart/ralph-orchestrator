@@ -620,4 +620,145 @@ mod tests {
         .expect("preflight");
         assert!(root.join("npm_install_called").exists());
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn run_npm_install_uses_ci_with_lockfile() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let bin_dir = temp_dir.path().join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir");
+
+        let root = temp_dir.path().join("workspace");
+        std::fs::create_dir_all(&root).expect("workspace dir");
+        std::fs::write(root.join("package-lock.json"), "{}").expect("lockfile");
+
+        let npm_path = write_fake_executable(
+            &bin_dir,
+            "npm",
+            r#"echo "$1" > "$PWD/command.txt""#,
+        );
+
+        run_npm_install_with(&root, npm_path.as_os_str())
+            .await
+            .expect("npm ci");
+
+        let command = std::fs::read_to_string(root.join("command.txt")).expect("read command");
+        assert_eq!(command.trim(), "ci");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn run_npm_install_uses_install_without_lockfile() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let bin_dir = temp_dir.path().join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir");
+
+        let root = temp_dir.path().join("workspace");
+        std::fs::create_dir_all(&root).expect("workspace dir");
+
+        let npm_path = write_fake_executable(
+            &bin_dir,
+            "npm",
+            r#"echo "$1" > "$PWD/command.txt""#,
+        );
+
+        run_npm_install_with(&root, npm_path.as_os_str())
+            .await
+            .expect("npm install");
+
+        let command = std::fs::read_to_string(root.join("command.txt")).expect("read command");
+        assert_eq!(command.trim(), "install");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn run_npm_install_reports_failure() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let bin_dir = temp_dir.path().join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir");
+
+        let root = temp_dir.path().join("workspace");
+        std::fs::create_dir_all(&root).expect("workspace dir");
+
+        let npm_path = write_fake_executable(&bin_dir, "npm", r#"echo "boom" 1>&2; exit 1"#);
+
+        let err = run_npm_install_with(&root, npm_path.as_os_str())
+            .await
+            .expect_err("npm install failure");
+        let msg = format!("{err}");
+        assert!(msg.contains("npm install failed"), "msg: {msg}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn forward_output_notifies_on_stdout_pattern() {
+        let mut child = AsyncCommand::new("sh")
+            .arg("-c")
+            .arg("echo READY")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn sh");
+
+        let stdout = child.stdout.take().expect("stdout");
+        let stderr = child.stderr.take().expect("stderr");
+        let ready = std::sync::Arc::new(Notify::new());
+        let ready_clone = ready.clone();
+
+        let forward_task = tokio::spawn(async move {
+            forward_output(stdout, stderr, "test", "READY", ready_clone).await;
+        });
+
+        tokio::time::timeout(Duration::from_secs(2), ready.notified())
+            .await
+            .expect("ready notification");
+
+        let _ = child.wait().await;
+        forward_task.await.expect("forward task");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn forward_output_notifies_on_stderr_pattern() {
+        let mut child = AsyncCommand::new("sh")
+            .arg("-c")
+            .arg("echo READY 1>&2")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("spawn sh");
+
+        let stdout = child.stdout.take().expect("stdout");
+        let stderr = child.stderr.take().expect("stderr");
+        let ready = std::sync::Arc::new(Notify::new());
+        let ready_clone = ready.clone();
+
+        let forward_task = tokio::spawn(async move {
+            forward_output(stdout, stderr, "test", "READY", ready_clone).await;
+        });
+
+        tokio::time::timeout(Duration::from_secs(2), ready.notified())
+            .await
+            .expect("ready notification");
+
+        let _ = child.wait().await;
+        forward_task.await.expect("forward task");
+    }
+
+    #[tokio::test]
+    async fn execute_invalid_workspace_returns_error() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let missing = temp_dir.path().join("missing");
+        let args = WebArgs {
+            backend_port: 3000,
+            frontend_port: 5173,
+            workspace: Some(missing),
+            no_open: true,
+        };
+
+        let err = execute(args).await.expect_err("invalid workspace");
+        assert!(err
+            .to_string()
+            .contains("Invalid workspace path"));
+    }
 }
