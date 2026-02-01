@@ -14,7 +14,7 @@ This sop guides you through the process of transforming a rough idea into a deta
 ## Parameters
 
 - **rough_idea** (required): The initial concept or idea you want to develop into a detailed design
-- **project_dir** (optional, default: ".sop/planning"): The base directory where all project files will be stored
+- **project_dir** (optional, default: "specs/{task_name}"): The base directory where all project files will be stored. The `{task_name}` is derived from the rough idea as a kebab-case identifier (e.g., "add-rate-limiter", "user-auth-flow"). This default aligns output with Ralph's spec-driven pipeline so artifacts feed directly into `ralph run --config presets/spec-driven.yml` or `ralph run --config presets/pdd-to-code-assist.yml`.
 
 **Constraints for parameter acquisition:**
 - You MUST ask for all required parameters upfront in a single prompt rather than one at a time
@@ -25,28 +25,27 @@ This sop guides you through the process of transforming a rough idea into a deta
   - Other methods: You SHOULD be open to other ways the user might want to provide the idea
 - You MUST use appropriate tools to access content based on the input method
 - You MUST confirm successful acquisition of all parameters before proceeding
+- You MUST derive `task_name` from the rough idea (kebab-case, e.g., "build a rate limiter" → "rate-limiter")
 - You SHOULD save the acquired rough idea to a consistent location for use in subsequent steps
 - You MUST NOT overwrite the existing project directory because this could destroy previous work and cause data loss
-- You MUST ask for project_dir if it is not given and default ".sop/planning" directory already exist and has contents from previous iteration
+- You MUST ask for project_dir if it is not given and default "specs/{task_name}" directory already exists and has contents from a previous iteration
 
 ## Steps
 
 ### 1. Create Project Structure
 
 Set up a directory structure to organize all artifacts created during the process.
+This structure is designed to align with Ralph's spec-driven pipeline presets.
 
 **Constraints:**
 - You MUST create the specified project directory if it doesn't already exist
 - You MUST create the following files:
   - {project_dir}/rough-idea.md (containing the provided rough idea)
-  - {project_dir}/idea-honing.md (for requirements clarification)
-- You MUST create the following subdirectories:
+  - {project_dir}/requirements.md (for requirements clarification — Q&A record)
+- You MUST create the following subdirectory:
   - {project_dir}/research/ (directory for research notes)
-  - {project_dir}/design/ (directory for design documents)
-  - {project_dir}/implementation/ (directory for implementation plans)
 - You MUST notify the user when the structure has been created
-- You MUST prompt the user to add all project files to Q's context using the command: `/context add {project_dir}/**/*.md`
-- You MUST explain that this will ensure all project files remain in context throughout the process
+- You MUST explain that the output structure feeds directly into Ralph's spec-driven presets
 
 ### 2. Initial Process Planning
 
@@ -67,20 +66,20 @@ Determine the initial approach and sequence for requirements clarification and r
 Guide the user through a series of questions to refine the initial idea and develop a thorough specification.
 
 **Constraints:**
-- You MUST create an empty {project_dir}/idea-honing.md file if it doesn't already exist
+- You MUST create an empty {project_dir}/requirements.md file if it doesn't already exist
 - You MUST ask ONLY ONE question at a time and wait for the user's response before asking the next question
 - You MUST NOT list multiple questions for the user to answer at once because this overwhelms users and leads to incomplete responses
 - You MUST NOT pre-populate answers to questions without user input because this assumes user preferences without confirmation
-- You MUST NOT write multiple questions and answers to the idea-honing.md file at once because this skips the interactive clarification process
+- You MUST NOT write multiple questions and answers to the requirements.md file at once because this skips the interactive clarification process
 - You MUST follow this exact process for each question:
   1. Formulate a single question
-  2. Append the question to {project_dir}/idea-honing.md
+  2. Append the question to {project_dir}/requirements.md
   3. Present the question to the user in the conversation
   4. Wait for the user's complete response, which may require brief back-and-forth dialogue across multiple turns.
-  5. Once you have their complete response, append the user's answer (or final decision) to {project_dir}/idea-honing.md
+  5. Once you have their complete response, append the user's answer (or final decision) to {project_dir}/requirements.md
   6. Only then proceed to formulating the next question
 - You MAY suggest possible answers when asking a question, but MUST wait for the user's actual response
-- You MUST format the idea-honing.md document with clear question and answer sections
+- You MUST format the requirements.md document with clear question and answer sections
 - You MUST include the final chosen answer in the answer section
 - You MAY include alternative options that were considered before the final decision
 - You MUST ensure you have the user's complete response before recording it and moving to the next question
@@ -142,18 +141,19 @@ Determine if further requirements clarification or research is needed before pro
 Develop a comprehensive design document based on the requirements and research.
 
 **Constraints:**
-- You MUST create a detailed design document at {project_dir}/design/detailed-design.md
+- You MUST create a detailed design document at {project_dir}/design.md
 - You MUST write the design as a standalone document that can be understood without reading other project files
 - You MUST include the following sections in the design document:
   - Overview
-  - Detailed Requirements (consolidated from idea-honing.md)
+  - Detailed Requirements (consolidated from requirements.md)
   - Architecture Overview
   - Components and Interfaces
   - Data Models
   - Error Handling
+  - Acceptance Criteria (Given-When-Then format — these enable machine verification)
   - Testing Strategy
   - Appendices (Technology Choices, Research Findings, Alternative Approaches)
-- You MUST consolidate all requirements from the idea-honing.md file into the Detailed Requirements section
+- You MUST consolidate all requirements from the requirements.md file into the Detailed Requirements section
 - You MUST include an appendix section that summarizes key research findings, including:
   - Major technology choices with pros and cons
   - Existing solutions analysis
@@ -171,7 +171,7 @@ Develop a comprehensive design document based on the requirements and research.
 Create a structured implementation plan with a series of steps for implementing the design.
 
 **Constraints:**
-- You MUST create an implementation plan at {project_dir}/implementation/plan.md
+- You MUST create an implementation plan at {project_dir}/plan.md
 - You MUST include a checklist at the beginning of the plan.md file to track implementation progress
 - You MUST use the following specific instructions when creating the implementation plan:
   ```
@@ -211,17 +211,21 @@ Provide a summary of all artifacts created and next steps.
 
 ### 9. Offer Ralph Integration
 
-After completing the planning process, offer to create a PROMPT.md file for Ralph.
+After completing the planning process, offer to set up Ralph for autonomous implementation.
 
 **Constraints:**
-- You MUST ask the user: "Would you like me to create a PROMPT.md for Ralph to implement this?"
+- You MUST ask the user: "Would you like me to set up Ralph to implement this autonomously?"
 - If the user agrees, You MUST create a minimal PROMPT.md file in the project root containing:
   - A clear objective statement
   - Key requirements (bulleted list)
-  - Acceptance criteria
-  - Reference to the detailed design document
-- The PROMPT.md should be concise (under 100 lines) - Ralph will read the detailed design
-- You MUST NOT include the full design content in PROMPT.md - just reference the design file path
+  - Acceptance criteria (Given-When-Then format for machine verification)
+  - Reference to the spec directory: `specs/{task_name}/`
+- The PROMPT.md should be concise (under 100 lines) - Ralph will read the specs
+- You MUST NOT include the full design content in PROMPT.md - just reference the spec directory path
+- You MUST suggest the appropriate Ralph command to run:
+  - For full autonomous pipeline: `ralph run --config presets/pdd-to-code-assist.yml`
+  - For simpler spec-driven flow: `ralph run --config presets/spec-driven.yml`
+- You MUST explain that the spec-driven presets will autonomously: write specs → review → implement (TDD) → validate → commit
 - If the user declines, You SHOULD acknowledge and conclude the session
 
 ## Examples
@@ -230,41 +234,24 @@ After completing the planning process, offer to create a PROMPT.md file for Ralp
 
 ```
 Rough idea: I want to build a feature for our team's internal tool that allows users to create and manage templates for common documents we produce. Users should be able to create, edit, and share templates, as well as use them to generate new documents with custom fields.
-
-Project directory: docs/template-feature
 ```
 
 ### Example Output
 
 ```
-# Research Phase Interaction
-
-Based on your requirements, I've identified several areas that would benefit from research:
-
-1. **Existing template solutions** - Understanding what's already available
-2. **Storage and versioning approaches** - How to handle template versions and sharing
-3. **Custom field validation patterns** - Best practices for dynamic field validation
-
-I notice you have several additional MCP search tools available beyond the standard ones, including 'peccy web search' and other external search capabilities. Should I incorporate these additional search tools into the research process for broader coverage of template management solutions and industry best practices?
-
----
-
 # Project Summary
 
 I've completed the transformation of your rough idea into a detailed design with an implementation plan. Here's what was created:
 
 ## Directory Structure
-- docs/template-feature/
+- specs/template-management/
   - rough-idea.md (your initial concept)
-  - idea-honing.md (our Q&A requirements clarification)
+  - requirements.md (our Q&A requirements clarification)
   - research/
     - existing-templates.md
     - storage-options.md
-    - external-solutions.md
-  - design/
-    - detailed-design.md
-  - implementation/
-    - plan.md (includes implementation checklist)
+  - design.md (detailed architecture and design)
+  - plan.md (implementation plan with checklist)
   - summary.md (this document)
 
 ## Key Design Elements
@@ -278,11 +265,12 @@ I've completed the transformation of your rough idea into a detailed design with
 The implementation plan breaks down the work into 12 incremental steps, starting with core data models and building up to the complete feature set.
 
 ## Next Steps
-1. Review the detailed design document at docs/template-feature/design/detailed-design.md
-2. Check the implementation plan and checklist at docs/template-feature/implementation/plan.md
-3. Begin implementation following the checklist in the implementation plan
+1. Review the detailed design at specs/template-management/design.md
+2. Check the implementation plan at specs/template-management/plan.md
+3. Run Ralph to implement autonomously:
+   ralph run --config presets/pdd-to-code-assist.yml
 
-Would you like me to explain any specific part of the design or implementation plan in more detail?
+Would you like me to set up Ralph to implement this autonomously?
 ```
 
 ## Troubleshooting
