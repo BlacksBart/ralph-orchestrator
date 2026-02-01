@@ -188,3 +188,41 @@ Loaded from parent skills dir.
     let load_stdout = ralph_skill_no_root_ok(&nested_dir, &["load", "test-generation"]);
     assert!(load_stdout.contains("Loaded from parent skills dir."));
 }
+
+#[test]
+fn test_skill_load_finds_parent_skills_dir_when_configured_root_missing() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let temp_path = temp_dir.path();
+
+    let repo_dir = temp_path.join("repo");
+    let workspace_dir = repo_dir.join("ralph-orchestrator");
+    let nested_dir = workspace_dir.join("nested");
+    fs::create_dir_all(&nested_dir).expect("create nested dir");
+
+    fs::write(
+        workspace_dir.join("ralph.yml"),
+        "skills:\n  enabled: true\n  dirs:\n    - .claude/skills\n",
+    )
+    .expect("write ralph.yml");
+
+    write_skill(
+        &repo_dir,
+        "test-generation",
+        r"---
+name: test-generation
+description: Test generation skill
+---
+
+# Test Generation
+
+Loaded from configured parent skills dir.
+",
+    );
+
+    let list_stdout = ralph_skill_no_root_ok(&nested_dir, &["list", "--format", "quiet"]);
+    let list_lines: Vec<&str> = list_stdout.lines().collect();
+    assert!(list_lines.contains(&"test-generation"));
+
+    let load_stdout = ralph_skill_no_root_ok(&nested_dir, &["load", "test-generation"]);
+    assert!(load_stdout.contains("Loaded from configured parent skills dir."));
+}

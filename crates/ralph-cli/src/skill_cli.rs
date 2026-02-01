@@ -247,6 +247,28 @@ fn find_default_skills_dir(root: &Path) -> Option<PathBuf> {
     None
 }
 
+fn resolve_configured_skills_dir(root: &Path, dir: &Path) -> PathBuf {
+    if dir.is_absolute() {
+        return dir.to_path_buf();
+    }
+
+    let candidate = root.join(dir);
+    if candidate.is_dir() {
+        return candidate;
+    }
+
+    let mut current = root.parent();
+    while let Some(parent) = current {
+        let candidate = parent.join(dir);
+        if candidate.is_dir() {
+            return candidate;
+        }
+        current = parent.parent();
+    }
+
+    candidate
+}
+
 /// Load config from workspace root, falling back to defaults.
 fn load_config(root: &Path) -> RalphConfig {
     // Try standard config file names
@@ -265,14 +287,17 @@ fn load_config(root: &Path) -> RalphConfig {
     let mut config = config.unwrap_or_default();
     config.normalize();
 
-    if config.skills.dirs.is_empty()
-        && let Some(default_dir) = find_default_skills_dir(root)
-    {
-        let dir = default_dir
-            .strip_prefix(root)
-            .map(PathBuf::from)
-            .unwrap_or(default_dir);
-        config.skills.dirs.push(dir);
+    if config.skills.dirs.is_empty() {
+        if let Some(default_dir) = find_default_skills_dir(root) {
+            config.skills.dirs.push(default_dir);
+        }
+    } else {
+        config.skills.dirs = config
+            .skills
+            .dirs
+            .iter()
+            .map(|dir| resolve_configured_skills_dir(root, dir))
+            .collect();
     }
 
     config
