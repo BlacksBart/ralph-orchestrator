@@ -1,6 +1,7 @@
 //! Integration tests for `ralph tools skill` CLI commands.
 
 use std::process::Command;
+use std::{fs, path::Path};
 use tempfile::TempDir;
 
 fn ralph_skill(temp_path: &std::path::Path, args: &[&str]) -> std::process::Output {
@@ -13,6 +14,12 @@ fn ralph_skill(temp_path: &std::path::Path, args: &[&str]) -> std::process::Outp
         .current_dir(temp_path)
         .output()
         .expect("Failed to execute ralph tools skill command")
+}
+
+fn write_skill(root: &Path, name: &str, contents: &str) {
+    let skill_dir = root.join(".claude").join("skills").join(name);
+    fs::create_dir_all(&skill_dir).expect("create skill dir");
+    fs::write(skill_dir.join("SKILL.md"), contents).expect("write skill file");
 }
 
 fn ralph_skill_ok(temp_path: &std::path::Path, args: &[&str]) -> String {
@@ -56,4 +63,32 @@ fn test_skill_list_includes_builtins() {
     let lines: Vec<&str> = stdout.lines().collect();
     assert!(lines.contains(&"ralph-tools"));
     assert!(lines.contains(&"robot-interaction"));
+}
+
+#[test]
+fn test_skill_list_and_load_user_skill_from_default_dir() {
+    let temp_dir = TempDir::new().expect("temp dir");
+    let temp_path = temp_dir.path();
+
+    write_skill(
+        temp_path,
+        "test-generation",
+        r"---
+name: test-generation
+description: Test generation skill
+---
+
+# Test Generation
+
+Loaded from default skills dir.
+",
+    );
+
+    let list_stdout = ralph_skill_ok(temp_path, &["list", "--format", "quiet"]);
+    let list_lines: Vec<&str> = list_stdout.lines().collect();
+    assert!(list_lines.contains(&"test-generation"));
+
+    let load_stdout = ralph_skill_ok(temp_path, &["load", "test-generation"]);
+    assert!(load_stdout.contains("<test-generation-skill>"));
+    assert!(load_stdout.contains("Loaded from default skills dir."));
 }
