@@ -2897,14 +2897,14 @@ fn test_verify_tasks_complete_missing_and_pending() {
     let event_loop = EventLoop::with_context(RalphConfig::default(), loop_context);
 
     // Missing tasks file should be treated as complete.
-    assert_eq!(event_loop.verify_tasks_complete().unwrap(), true);
+    assert!(event_loop.verify_tasks_complete().unwrap());
 
     let tasks_path = temp_dir.path().join(".ralph/agent/tasks.jsonl");
     let mut store = TaskStore::load(&tasks_path).unwrap();
     store.add(Task::new("Open task".to_string(), 1));
     store.save().unwrap();
 
-    assert_eq!(event_loop.verify_tasks_complete().unwrap(), false);
+    assert!(!event_loop.verify_tasks_complete().unwrap());
 }
 
 #[test]
@@ -2921,14 +2921,14 @@ fn test_verify_scratchpad_complete_variants() {
     let scratchpad_path = temp_dir.path().join(".ralph/agent/scratchpad.md");
     fs::create_dir_all(scratchpad_path.parent().unwrap()).unwrap();
     fs::write(&scratchpad_path, "## Tasks\n- [ ] Pending\n").unwrap();
-    assert_eq!(event_loop.verify_scratchpad_complete().unwrap(), false);
+    assert!(!event_loop.verify_scratchpad_complete().unwrap());
 
     fs::write(
         &scratchpad_path,
         "## Tasks\n- [x] Done\n- [~] Cancelled\n",
     )
     .unwrap();
-    assert_eq!(event_loop.verify_scratchpad_complete().unwrap(), true);
+    assert!(event_loop.verify_scratchpad_complete().unwrap());
 }
 
 #[test]
@@ -3053,7 +3053,7 @@ hats:
 
     let ralph_id = HatId::new("ralph");
     let ralph_pending = event_loop.bus.peek_pending(&ralph_id);
-    assert!(ralph_pending.map_or(true, |events| events.is_empty()));
+    assert!(ralph_pending.is_none_or(|events| events.is_empty()));
 }
 
 #[test]
@@ -3111,7 +3111,7 @@ fn test_record_hat_activations_increments_counts() {
     let reviewer = HatId::new("reviewer");
 
     event_loop.record_hat_activations(&[planner.clone(), reviewer.clone()]);
-    event_loop.record_hat_activations(&[planner.clone()]);
+    event_loop.record_hat_activations(std::slice::from_ref(&planner));
 
     assert_eq!(
         event_loop.state.hat_activation_counts.get(&planner),

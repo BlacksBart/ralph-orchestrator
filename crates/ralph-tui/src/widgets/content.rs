@@ -565,7 +565,7 @@ mod tests {
         );
         // Second row: "🔨x" (emoji + 'x')
         assert!(
-            lines[1].contains("x"),
+            lines[1].contains('x'),
             "second row should have the emoji and 'x', got: {:?}",
             lines[1]
         );

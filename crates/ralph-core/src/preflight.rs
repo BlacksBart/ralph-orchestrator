@@ -1075,7 +1075,7 @@ mod tests {
         std::fs::create_dir_all(&specs_dir).expect("create specs dir");
         std::fs::write(
             specs_dir.join("feature.spec.md"),
-            r#"---
+            r"---
 status: draft
 ---
 
@@ -1090,7 +1090,7 @@ Add a new feature.
 **Given** the system is running
 **When** the user triggers the feature
 **Then** the expected output is produced
-"#,
+",
         )
         .expect("write spec");
 
@@ -1112,7 +1112,7 @@ Add a new feature.
         std::fs::create_dir_all(&specs_dir).expect("create specs dir");
         std::fs::write(
             specs_dir.join("incomplete.spec.md"),
-            r#"---
+            r"---
 status: draft
 ---
 
@@ -1125,7 +1125,7 @@ Do something.
 ## Requirements
 
 1. Some requirement
-"#,
+",
         )
         .expect("write spec");
 
@@ -1150,7 +1150,7 @@ Do something.
         // This spec lacks acceptance criteria but is already implemented
         std::fs::write(
             specs_dir.join("done.spec.md"),
-            r#"---
+            r"---
 status: implemented
 ---
 
@@ -1159,7 +1159,7 @@ status: implemented
 ## Goal
 
 Already done.
-"#,
+",
         )
         .expect("write spec");
 
@@ -1181,7 +1181,7 @@ Already done.
         std::fs::create_dir_all(&sub_dir).expect("create subdirectory");
         std::fs::write(
             sub_dir.join("adapter.spec.md"),
-            r#"---
+            r"---
 status: draft
 ---
 
@@ -1192,7 +1192,7 @@ status: draft
 - **Given** an adapter is configured
 - **When** a request is sent
 - **Then** the adapter responds correctly
-"#,
+",
         )
         .expect("write spec");
 
@@ -1209,37 +1209,37 @@ status: draft
 
     #[test]
     fn has_acceptance_criteria_detects_bold_format() {
-        let content = r#"
+        let content = r"
 ## Acceptance Criteria
 
 **Given** the system is ready
 **When** the user clicks
 **Then** the result appears
-"#;
+";
         assert!(has_acceptance_criteria(content));
     }
 
     #[test]
     fn has_acceptance_criteria_detects_list_format() {
-        let content = r#"
+        let content = r"
 ## Acceptance Criteria
 
 - Given the system is ready
 - When the user clicks
 - Then the result appears
-"#;
+";
         assert!(has_acceptance_criteria(content));
     }
 
     #[test]
     fn has_acceptance_criteria_detects_bold_list_format() {
-        let content = r#"
+        let content = r"
 ## Acceptance Criteria
 
 - **Given** the system is ready
 - **When** the user clicks
 - **Then** the result appears
-"#;
+";
         assert!(has_acceptance_criteria(content));
     }
 
@@ -1256,7 +1256,7 @@ status: draft
 
     #[test]
     fn has_acceptance_criteria_rejects_content_without_criteria() {
-        let content = r#"
+        let content = r"
 # Some Spec
 
 ## Goal
@@ -1266,7 +1266,7 @@ Build something.
 ## Requirements
 
 1. It should work.
-"#;
+";
         assert!(!has_acceptance_criteria(content));
     }
 
@@ -1293,7 +1293,7 @@ Build something.
 
     #[test]
     fn extract_criteria_multiple_triples() {
-        let content = r#"
+        let content = r"
 **Given** system A is running
 **When** user clicks button
 **Then** dialog appears
@@ -1301,7 +1301,7 @@ Build something.
 **Given** dialog is open
 **When** user confirms
 **Then** action completes
-"#;
+";
         let criteria = extract_acceptance_criteria(content);
         assert_eq!(criteria.len(), 2);
         assert_eq!(criteria[0].given, "system A is running");
@@ -1311,13 +1311,13 @@ Build something.
 
     #[test]
     fn extract_criteria_list_format() {
-        let content = r#"
+        let content = r"
 ## Acceptance Criteria
 
 - **Given** an adapter is configured
 - **When** a request is sent
 - **Then** the adapter responds correctly
-"#;
+";
         let criteria = extract_acceptance_criteria(content);
         assert_eq!(criteria.len(), 1);
         assert_eq!(criteria[0].given, "an adapter is configured");
@@ -1327,11 +1327,11 @@ Build something.
 
     #[test]
     fn extract_criteria_plain_text_format() {
-        let content = r#"
+        let content = r"
 Given the server is started
 When a GET request is sent
 Then a 200 response is returned
-"#;
+";
         let criteria = extract_acceptance_criteria(content);
         assert_eq!(criteria.len(), 1);
         assert_eq!(criteria[0].given, "the server is started");
@@ -1341,10 +1341,10 @@ Then a 200 response is returned
 
     #[test]
     fn extract_criteria_given_then_without_when() {
-        let content = r#"
+        let content = r"
 **Given** the config is empty
 **Then** defaults are used
-"#;
+";
         let criteria = extract_acceptance_criteria(content);
         assert_eq!(criteria.len(), 1);
         assert_eq!(criteria[0].given, "the config is empty");
@@ -1360,24 +1360,24 @@ Then a 200 response is returned
 
     #[test]
     fn extract_criteria_no_criteria() {
-        let content = r#"
+        let content = r"
 # Spec
 
 ## Goal
 
 Build something.
-"#;
+";
         let criteria = extract_acceptance_criteria(content);
         assert!(criteria.is_empty());
     }
 
     #[test]
     fn extract_criteria_incomplete_given_without_then_is_dropped() {
-        let content = r#"
+        let content = r"
 **Given** orphan precondition
 
 Some other text here.
-"#;
+";
         let criteria = extract_acceptance_criteria(content);
         assert!(criteria.is_empty());
     }
@@ -1388,14 +1388,14 @@ Some other text here.
         let path = temp.path().join("done.spec.md");
         std::fs::write(
             &path,
-            r#"---
+            r"---
 status: implemented
 ---
 
 **Given** something
 **When** something happens
 **Then** result
-"#,
+",
         )
         .expect("write");
 
@@ -1409,7 +1409,7 @@ status: implemented
         let path = temp.path().join("feature.spec.md");
         std::fs::write(
             &path,
-            r#"---
+            r"---
 status: draft
 ---
 
@@ -1418,7 +1418,7 @@ status: draft
 **Given** the system is ready
 **When** user acts
 **Then** feature works
-"#,
+",
         )
         .expect("write");
 

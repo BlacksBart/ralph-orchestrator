@@ -1484,7 +1484,7 @@ mod tests {
     fn test_resolve_token_from_skips_empty_values() {
         let resolved = resolve_token_from(
             Some("   ".to_string()),
-            Some("".to_string()),
+            Some(String::new()),
             Some(" config-token ".to_string()),
         );
 
@@ -1495,7 +1495,7 @@ mod tests {
     fn test_resolve_token_from_returns_none_when_all_empty() {
         let resolved = resolve_token_from(
             Some("   ".to_string()),
-            Some("".to_string()),
+            Some(String::new()),
             Some("   ".to_string()),
         );
 

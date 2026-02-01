@@ -828,12 +828,10 @@ mod tests {
 
     #[test]
     fn truncate_to_budget_prefers_complete_memory_blocks() {
-        let content = format!(
-            "### mem-1\n> hi\n<!-- tags: a | created: 2026-01-31 -->\n\n\
-### mem-2\n> more\n<!-- tags: b | created: 2026-01-31 -->\n"
-        );
+        let content = "### mem-1\n> hi\n<!-- tags: a | created: 2026-01-31 -->\n\n\
+### mem-2\n> more\n<!-- tags: b | created: 2026-01-31 -->\n".to_string();
         let first_end = content.find("-->").expect("marker") + 3;
-        let budget = (first_end + 6 + 3) / 4;
+        let budget = (first_end + 6).div_ceil(4);
         let truncated = truncate_to_budget(&content, budget);
 
         assert!(truncated.contains("mem-1"));
