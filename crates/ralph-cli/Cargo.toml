@@ -52,6 +52,9 @@ indicatif.workspace = true
 # For opening URLs in the default browser
 open.workspace = true
 
+# For shell completion generation
+clap_complete = "4.5"
+
 # For Unix process group and signal handling
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true }
