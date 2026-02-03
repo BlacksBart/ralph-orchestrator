@@ -4,7 +4,7 @@
 //! scripts for bash, zsh, fish, and PowerShell.
 
 use clap::{CommandFactory, Parser, ValueEnum};
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use std::io;
 
 /// Arguments for the completions subcommand.
