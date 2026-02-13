@@ -221,8 +221,9 @@ pub enum OutputFormat {
     Json,
 }
 
-// Re-export colors from display module for use in this file
+// Re-export colors and truncate from display module for use in this file
 use display::colors;
+use display::truncate;
 
 /// Source for configuration: file path, builtin preset, remote URL, or config override.
 #[derive(Debug, Clone)]
@@ -1270,13 +1271,7 @@ async fn run_command(
                 }
             }
         })
-        .map(|p| {
-            if p.len() > 100 {
-                format!("{}...", &p[..100])
-            } else {
-                p
-            }
-        })
+        .map(|p| truncate(&p, 100))
         .unwrap_or_else(|| "[no prompt]".to_string());
 
     let mut pending_worktree_registration: Option<LoopEntry> = None;
