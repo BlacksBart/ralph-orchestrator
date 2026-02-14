@@ -5,6 +5,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 var __dirname = dirname(fileURLToPath(import.meta.url));
+var backendPort = process.env.RALPH_BACKEND_PORT || "3000";
+var backendTarget = "http://localhost:".concat(backendPort);
 export default defineConfig({
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -18,11 +20,11 @@ export default defineConfig({
         allowedHosts: ["studio", "localhost"],
         proxy: {
             "/trpc": {
-                target: "http://localhost:3000",
+                target: backendTarget,
                 changeOrigin: true,
             },
             "/ws": {
-                target: "http://localhost:3000",
+                target: backendTarget,
                 ws: true,
                 changeOrigin: true,
             },
