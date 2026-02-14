@@ -475,6 +475,10 @@ struct RunArgs {
     #[arg(short = 'b', long = "backend", value_name = "BACKEND")]
     backend: Option<String>,
 
+    /// Override model (e.g., opus, sonnet, haiku, or full model ID)
+    #[arg(short = 'm', long = "model", value_name = "MODEL")]
+    model: Option<String>,
+
     /// Prompt file path (mutually exclusive with -p/--prompt)
     #[arg(short = 'P', long = "prompt-file", conflicts_with = "prompt_text")]
     prompt_file: Option<PathBuf>,
@@ -677,6 +681,10 @@ struct PlanArgs {
     #[arg(short, long, value_name = "BACKEND")]
     backend: Option<String>,
 
+    /// Override model (e.g., opus, sonnet, haiku, or full model ID)
+    #[arg(short = 'm', long = "model", value_name = "MODEL")]
+    model: Option<String>,
+
     /// Custom backend command and arguments (use after --)
     #[arg(last = true)]
     custom_args: Vec<String>,
@@ -696,6 +704,10 @@ struct CodeTaskArgs {
     /// Backend to use (overrides config and auto-detection)
     #[arg(short, long, value_name = "BACKEND")]
     backend: Option<String>,
+
+    /// Override model (e.g., opus, sonnet, haiku, or full model ID)
+    #[arg(short = 'm', long = "model", value_name = "MODEL")]
+    model: Option<String>,
 
     /// Custom backend command and arguments (use after --)
     #[arg(last = true)]
@@ -852,6 +864,7 @@ async fn main() -> Result<()> {
                 quiet: false,
                 record_session: None,
                 custom_args: Vec::new(),
+                model: None,
             };
             run_command(&config_sources, cli.verbose, cli.color, args).await
         }
@@ -1010,6 +1023,16 @@ fn print_preflight_summary(
                 emit(format!("  ⚠ {}: {}", check.name, message));
             }
         }
+    }
+}
+
+/// Resolve model shorthand names to full model IDs.
+fn resolve_model_shorthand(model: &str) -> String {
+    match model.to_lowercase().as_str() {
+        "opus" => "claude-opus-4-20250514".to_string(),
+        "sonnet" => "claude-sonnet-4-5-20250929".to_string(),
+        "haiku" => "claude-haiku-4-5-20251001".to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -1431,7 +1454,12 @@ async fn run_command(
     // TUI is enabled by default (unless --no-tui or --autonomous is specified)
     let enable_tui = !args.no_tui && !args.autonomous;
     let verbosity = Verbosity::resolve(verbose || args.verbose, args.quiet);
-    let custom_args = args.custom_args;
+    let mut custom_args = args.custom_args;
+    if let Some(model) = &args.model {
+        let resolved = resolve_model_shorthand(model);
+        custom_args.insert(0, "--model".to_string());
+        custom_args.insert(1, resolved);
+    }
     // --no-auto-merge CLI flag overrides config.features.auto_merge
     let auto_merge_override = if args.no_auto_merge {
         Some(false)
@@ -2091,15 +2119,22 @@ fn plan_command(
         _ => None,
     });
 
+    let mut custom_args = args.custom_args;
+    if let Some(model) = &args.model {
+        let resolved = resolve_model_shorthand(model);
+        custom_args.insert(0, "--model".to_string());
+        custom_args.insert(1, resolved);
+    }
+
     let config = SopRunConfig {
         sop: Sop::Pdd,
         user_input: args.idea,
         backend_override: args.backend,
         config_path,
-        custom_args: if args.custom_args.is_empty() {
+        custom_args: if custom_args.is_empty() {
             None
         } else {
-            Some(args.custom_args)
+            Some(custom_args)
         },
     };
 
@@ -2144,15 +2179,22 @@ fn code_task_command(
         _ => None,
     });
 
+    let mut custom_args = args.custom_args;
+    if let Some(model) = &args.model {
+        let resolved = resolve_model_shorthand(model);
+        custom_args.insert(0, "--model".to_string());
+        custom_args.insert(1, resolved);
+    }
+
     let config = SopRunConfig {
         sop: Sop::CodeTaskGenerator,
         user_input: args.input,
         backend_override: args.backend,
         config_path,
-        custom_args: if args.custom_args.is_empty() {
+        custom_args: if custom_args.is_empty() {
             None
         } else {
-            Some(args.custom_args)
+            Some(custom_args)
         },
     };
 
@@ -2880,6 +2922,7 @@ core:
             quiet: false,
             record_session: None,
             custom_args: Vec::new(),
+            model: None,
         }
     }
 
