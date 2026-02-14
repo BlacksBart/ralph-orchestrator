@@ -2,6 +2,12 @@
 
 All notable changes to ralph-orchestrator are documented here.
 
+## [2.5.1] - 2026-02-14
+
+### Changed
+
+- Version bump for 2.5.1 release.
+
 ## [2.3.0] - 2025-01-28
 
 ### Added
@@ -85,6 +91,7 @@ All notable changes to ralph-orchestrator are documented here.
 
 - Modularized codebase and fixed TUI mode
 
+[2.5.1]: https://github.com/mikeyobrien/ralph-orchestrator/compare/v2.5.0...v2.5.1
 [2.3.0]: https://github.com/mikeyobrien/ralph-orchestrator/compare/v2.2.5...v2.3.0
 [2.2.5]: https://github.com/mikeyobrien/ralph-orchestrator/compare/v2.2.4...v2.2.5
 [2.2.4]: https://github.com/mikeyobrien/ralph-orchestrator/compare/v2.2.3...v2.2.4

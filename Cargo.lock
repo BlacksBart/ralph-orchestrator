@@ -2147,7 +2147,7 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "ralph-adapters"
-version = "2.5.0"
+version = "2.5.1"
 dependencies = [
  "ansi-to-tui",
  "anyhow",
@@ -2171,7 +2171,7 @@ dependencies = [
 
 [[package]]
 name = "ralph-bench"
-version = "2.5.0"
+version = "2.5.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2187,7 +2187,7 @@ dependencies = [
 
 [[package]]
 name = "ralph-cli"
-version = "2.5.0"
+version = "2.5.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2219,7 +2219,7 @@ dependencies = [
 
 [[package]]
 name = "ralph-core"
-version = "2.5.0"
+version = "2.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2242,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "ralph-e2e"
-version = "2.5.0"
+version = "2.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2261,7 +2261,7 @@ dependencies = [
 
 [[package]]
 name = "ralph-proto"
-version = "2.5.0"
+version = "2.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2273,7 +2273,7 @@ dependencies = [
 
 [[package]]
 name = "ralph-telegram"
-version = "2.5.0"
+version = "2.5.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2291,7 +2291,7 @@ dependencies = [
 
 [[package]]
 name = "ralph-tui"
-version = "2.5.0"
+version = "2.5.1"
 dependencies = [
  "anyhow",
  "chrono",
