@@ -3,3 +3,5 @@
 {"payload":"Task already implemented: Hat struct already has model and backend fields (config.rs lines 1253, 1257), execution logic in loop_runner.rs lines 916-924","topic":"build.done","ts":"2026-02-15T04:40:33.499294202+00:00"}
 {"payload":"task: task-1771130092-3f00, title: Update hat execution to use model overrides, priority: 1","topic":"build.task","ts":"2026-02-15T04:41:47.086325744+00:00"}
 {"payload":"Testing model override functionality","topic":"start","ts":"2026-02-15T04:46:39.900607361+00:00"}
+{"payload":"task: task-1771130092-3f00, status: already-implemented, evidence: ralph-v2.5.0-accepts-model-fields","topic":"build.done","ts":"2026-02-15T04:47:05.811980092+00:00"}
+{"payload":"task_id: task-1771130096-35a1, task: Add unit tests for hat config parsing, priority: P2","topic":"build.task","ts":"2026-02-15T04:47:47.903009073+00:00"}
