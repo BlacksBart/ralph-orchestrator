@@ -1,0 +1,46 @@
+name: "Test Model Override"
+description: "Test configuration to verify per-hat model overrides"
+
+hats:
+  test-opus:
+    name: "Test Opus Hat"
+    description: "Test hat using Opus model"
+    triggers: ["test.start"]
+    publishes: ["test.opus.done"]
+    model: "claude-opus-4-20250514"
+    backend: "claude"
+    instructions: |
+      Echo the model you are using.
+
+  test-sonnet:
+    name: "Test Sonnet Hat"
+    description: "Test hat using Sonnet model"
+    triggers: ["test.opus.done"]
+    publishes: ["test.sonnet.done"]
+    model: "claude-sonnet-4-5-20250929"
+    backend: "claude"
+    instructions: |
+      Echo the model you are using.
+
+  test-default:
+    name: "Test Default Hat"
+    description: "Test hat using default model"
+    triggers: ["test.sonnet.done"]
+    publishes: ["test.default.done"]
+    # No model specified - should use global default
+    instructions: |
+      Echo the model you are using.
+
+cli:
+  model: "claude-haiku-3"  # Global default
+  backend: "claude"
+
+events:
+  test.start:
+    description: "Start the test"
+  test.opus.done:
+    description: "Opus hat completed"
+  test.sonnet.done:
+    description: "Sonnet hat completed"
+  test.default.done:
+    description: "Default hat completed"

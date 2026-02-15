@@ -1,0 +1,23 @@
+name: "Simple Model Test"
+description: "Minimal test to check model override"
+
+hats:
+  check-model:
+    name: "Model Checker"
+    description: "Reports which model is being used"
+    triggers: ["start"]
+    publishes: ["done"]
+    model: "claude-opus-4-20250514"
+    instructions: |
+      Output exactly: "I am using model: [model name]" where [model name] is the actual model you are running on.
+      Then publish the "done" event.
+
+cli:
+  model: "claude-haiku-3"
+  backend: "claude"
+
+events:
+  start:
+    description: "Start event"
+  done:
+    description: "Completion event"

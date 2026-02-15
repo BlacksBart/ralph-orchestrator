@@ -1,0 +1,4 @@
+{"ts":"2026-02-14T22:55:08.211101984+00:00","iteration":0,"hat":"loop","topic":"build.task","triggered":"planner","payload":"Say hello and stop"}
+{"payload":"objective: say hello and stop - completed","topic":"build.done","ts":"2026-02-14T22:55:20.157542540+00:00"}
+{"payload":"Objective complete: said hello.","topic":"LOOP_COMPLETE","ts":"2026-02-14T22:55:36.308487719+00:00"}
+{"ts":"2026-02-14T22:55:39.108938666+00:00","iteration":3,"hat":"loop","topic":"loop.terminate","payload":"## Reason\nmax_iterations\n\n## Status\nStopped at iteration limit.\n\n## Summary\n- Iterations: 3\n- Duration: 31s\n- Exit code: 2"}
