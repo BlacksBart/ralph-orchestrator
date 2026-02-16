@@ -1,0 +1,7 @@
+{"ts":1737740400000,"event":"_meta.loop_start","data":{"prompt_file":"PROMPT.md","max_iterations":1,"ux_mode":"cli"}}
+{"ts":1737740400100,"event":"ux.terminal.write","data":{"bytes":"SSdtIHRlc3RpbmcgY29ubmVjdGl2aXR5Lg==","stdout":true,"offset_ms":0}}
+{"ts":1737740400200,"event":"ux.terminal.write","data":{"bytes":"Cg==","stdout":true,"offset_ms":100}}
+{"ts":1737740400300,"event":"ux.terminal.write","data":{"bytes":"UE9ORw==","stdout":true,"offset_ms":200}}
+{"ts":1737740400400,"event":"ux.terminal.write","data":{"bytes":"Cg==","stdout":true,"offset_ms":300}}
+{"ts":1737740400500,"event":"_meta.iteration","data":{"n":1,"elapsed_ms":500,"hat":"default"}}
+{"ts":1737740400600,"event":"_meta.termination","data":{"reason":"CompletionPromise","iterations":1,"elapsed_secs":0.5,"ux_writes":4}}

@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "name": "Ralph Benchmark Suite",
+    "description": "Starter benchmark tasks for evaluating Ralph loop effectiveness",
+    "version": "1.0.0"
+  },
+  "tasks": [
+    {
+      "name": "hello-world",
+      "description": "Create a Python script that prints Hello World",
+      "complexity": "simple",
+      "prompt_file": "tasks/hello-world/PROMPT.md",
+      "completion_promise": "TASK_COMPLETE",
+      "max_iterations": 5,
+      "expected_iterations": 1,
+      "timeout_seconds": 60,
+      "verification": {
+        "command": "python hello.py | grep -q 'Hello, World!'"
+      },
+      "tags": ["python", "starter"]
+    },
+    {
+      "name": "fizzbuzz-tdd",
+      "description": "Implement FizzBuzz with test-driven development",
+      "complexity": "medium",
+      "prompt_file": "tasks/fizzbuzz-tdd/PROMPT.md",
+      "completion_promise": "TESTS_PASSING",
+      "max_iterations": 15,
+      "expected_iterations": 5,
+      "timeout_seconds": 300,
+      "setup": {
+        "files": ["tasks/fizzbuzz-tdd/test_fizzbuzz.py"]
+      },
+      "verification": {
+        "command": "pytest test_fizzbuzz.py -v"
+      },
+      "tags": ["python", "tdd", "testing"]
+    }
+  ]
+}

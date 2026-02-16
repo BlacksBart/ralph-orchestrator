@@ -1,0 +1,9 @@
+{"ts":1737740400000,"event":"_meta.loop_start","data":{"prompt_file":"PROMPT.md","max_iterations":1,"ux_mode":"cli"}}
+{"ts":1737740400050,"event":"ux.terminal.write","data":{"bytes":"SSdsbCBlbWl0IHRoZSB0ZXN0IGV2ZW50Lg==","stdout":true,"offset_ms":50}}
+{"ts":1737740400100,"event":"ux.terminal.write","data":{"bytes":"Cg==","stdout":true,"offset_ms":100}}
+{"ts":1737740400150,"event":"ux.terminal.write","data":{"bytes":"PGV2ZW50IHRvcGljPSJ0ZXN0LmV2ZW50Ij5UZXN0IHBheWxvYWQgZGF0YTwvZXZlbnQ+","stdout":true,"offset_ms":150}}
+{"ts":1737740400200,"event":"ux.terminal.write","data":{"bytes":"Cg==","stdout":true,"offset_ms":200}}
+{"ts":1737740400250,"event":"ux.terminal.write","data":{"bytes":"TE9PUF9DT01QTEVURQ==","stdout":true,"offset_ms":250}}
+{"ts":1737740400300,"event":"ux.terminal.write","data":{"bytes":"Cg==","stdout":true,"offset_ms":300}}
+{"ts":1737740400350,"event":"_meta.iteration","data":{"n":1,"elapsed_ms":350,"hat":"default"}}
+{"ts":1737740400400,"event":"_meta.termination","data":{"reason":"CompletionPromise","iterations":1,"elapsed_secs":0.4,"ux_writes":6}}

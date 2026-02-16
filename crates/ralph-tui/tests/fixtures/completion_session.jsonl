@@ -1,0 +1,4 @@
+{"topic": "task.start", "payload": "Start"}
+{"topic": "build.task", "payload": "Quick task"}
+{"topic": "build.done", "payload": "Done"}
+{"topic": "loop.terminate", "payload": "LOOP_COMPLETE"}

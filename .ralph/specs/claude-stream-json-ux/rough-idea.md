@@ -1,0 +1,1 @@
+Study claude code stream-json output and improve UX/design

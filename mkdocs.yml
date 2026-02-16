@@ -1,0 +1,184 @@
+# Ralph Orchestrator Documentation
+# MkDocs configuration for GitHub Pages hosting
+
+site_name: Ralph Orchestrator
+site_description: Hat-based orchestration framework that keeps AI agents in a loop until the task is done
+site_author: Ralph Orchestrator Contributors
+site_url: https://mikeyobrien.github.io/ralph-orchestrator/
+repo_url: https://github.com/mikeyobrien/ralph-orchestrator
+repo_name: mikeyobrien/ralph-orchestrator
+edit_uri: edit/main/docs/
+
+# Theme Configuration
+theme:
+  name: material
+  favicon: assets/favicon.png
+  logo: assets/logo.png
+  custom_dir: docs/overrides
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.tabs.link
+    - content.tooltips
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+
+# Navigation Structure
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Your First Task: getting-started/first-task.md
+  - Concepts:
+    - concepts/index.md
+    - The Ralph Wiggum Technique: concepts/ralph-wiggum-technique.md
+    - The Six Tenets: concepts/tenets.md
+    - Hats & Events: concepts/hats-and-events.md
+    - Coordination Patterns: concepts/coordination-patterns.md
+    - Memories & Tasks: concepts/memories-and-tasks.md
+    - Backpressure: concepts/backpressure.md
+  - User Guide:
+    - guide/index.md
+    - Configuration: guide/configuration.md
+    - Presets: guide/presets.md
+    - CLI Reference: guide/cli-reference.md
+    - Backends: guide/backends.md
+    - Writing Prompts: guide/prompts.md
+    - Cost Management: guide/cost-management.md
+  - Advanced:
+    - advanced/index.md
+    - Architecture: advanced/architecture.md
+    - Creating Custom Hats: advanced/custom-hats.md
+    - Event System Design: advanced/event-system.md
+    - Memory System: advanced/memory-system.md
+    - Task System: advanced/task-system.md
+    - Testing & Validation: advanced/testing.md
+    - Diagnostics: advanced/diagnostics.md
+    - Parallel Loops: advanced/parallel-loops.md
+  - API Reference:
+    - api/index.md
+    - ralph-proto: api/ralph-proto.md
+    - ralph-core: api/ralph-core.md
+    - ralph-adapters: api/ralph-adapters.md
+    - ralph-tui: api/ralph-tui.md
+    - ralph-cli: api/ralph-cli.md
+  - Examples:
+    - examples/index.md
+    - Simple Task: examples/simple-task.md
+    - TDD Workflow: examples/tdd-workflow.md
+    - Spec-Driven Development: examples/spec-driven.md
+    - Multi-Hat Workflow: examples/multi-hat.md
+    - Debugging: examples/debugging.md
+  - Contributing:
+    - contributing/index.md
+    - Development Setup: contributing/setup.md
+    - Code Style: contributing/style.md
+    - Testing: contributing/testing.md
+    - Submitting PRs: contributing/pull-requests.md
+  - Reference:
+    - reference/index.md
+    - Changelog: reference/changelog.md
+    - FAQ: reference/faq.md
+    - Glossary: reference/glossary.md
+    - Migration from v1: reference/migration-v1.md
+    - Troubleshooting: reference/troubleshooting.md
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - minify:
+      minify_html: true
+
+# Markdown Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: mikeyobrien
+      repo: ralph-orchestrator
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Extra Configuration
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/mikeyobrien/ralph-orchestrator
+  version:
+    provider: mike
+  generator: false
+
+# Copyright
+copyright: Copyright &copy; 2024-2026 Ralph Orchestrator Contributors

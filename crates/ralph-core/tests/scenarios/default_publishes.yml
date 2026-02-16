@@ -1,0 +1,36 @@
+# Default Publishes: Hat forgets to publish → default event injected
+# Tests fallback mechanism when hat doesn't emit expected event
+
+name: default_publishes
+description: Default event injected when hat forgets to publish
+
+config:
+  prompt_file: PROMPT.md
+  max_iterations: 3
+  hats:
+    builder:
+      subscribes_to:
+        - build.task
+      default_publishes: build.done
+
+mock_responses:
+  - |
+    <event topic="build.task">
+    Task: Build feature
+    </event>
+  - |
+    Feature built but forgot to publish event.
+  - |
+    <event topic="LOOP_COMPLETE">
+    Done.
+    </event>
+
+expected:
+  iterations: 3
+  events:
+    - topic: build.task
+    - topic: build.done  # Injected by default_publishes
+    - topic: LOOP_COMPLETE
+  injected_events:
+    - build.done
+  completion: true

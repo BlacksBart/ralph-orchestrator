@@ -1,0 +1,6 @@
+{"topic": "task.start", "payload": "Start"}
+{"topic": "build.task", "payload": "Plan the implementation"}
+{"topic": "build.blocked", "payload": "Needs clarification"}
+{"topic": "build.task", "payload": "Implement after clarification"}
+{"topic": "build.done", "payload": "Done"}
+{"topic": "loop.terminate", "payload": "LOOP_COMPLETE"}

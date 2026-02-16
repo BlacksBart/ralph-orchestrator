@@ -1,1 +1,119 @@
-.worktrees/
+# Rust
+/target/
+
+# Test configs with secrets
+ralph.test.yml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+.DS_Store
+
+# Node.js
+node_modules/
+*.tsbuildinfo
+test-results/
+
+# Web dashboard ephemeral (nested .ralph/.agent in subprojects)
+backend/**/.ralph/
+backend/**/.agent/
+frontend/**/.ralph/
+frontend/**/.agent/
+frontend/**/dist/
+backend/**/dist/
+backend/**/target/
+
+# Ephemeral agent state
+.agent/
+IMPLEMENTATION_PLAN.md
+
+# Ralph specific
+.sop/
+.logs/
+prompts/
+prompts/archive/
+ralph_*.log
+ralph_metrics_*.json
+
+# Ephemeral logs and debug output
+*.log
+test_output.txt
+schema_debug.txt
+pbcopy
+
+# Local configs
+.claude/settings.json
+.claude/*.local.md
+.kiro/
+.envrc
+
+# Playwright screenshots
+.playwright-mcp/
+
+# Test
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+tui-validation/
+.e2e-tests/
+coverage/
+
+# Documentation
+docs/_build/site/
+site/
+
+.worktrees
+PROMPT.md
+# But allow benchmark task prompts
+!bench/tasks/**/PROMPT.md
+.tmp-ralph-claude-code
+
+# Ralph orchestrator state
+# All state now consolidated under .ralph/
+.ralph/
+
+# Track git-friendly content (negations must follow the ignore)
+!.ralph/specs/
+!.ralph/specs/**
+!.ralph/tasks/
+!.ralph/tasks/**
+!.ralph/agent/
+!.ralph/agent/memories.md
+!.ralph/agent/tasks.jsonl
+
+# Codex local state
+.codex/

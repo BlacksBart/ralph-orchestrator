@@ -1,0 +1,8 @@
+{"topic": "task.start", "payload": "Start"}
+{"topic": "build.task", "payload": "Implement feature A"}
+{"topic": "build.done", "payload": "Done"}
+{"topic": "build.task", "payload": "Write tests for feature A"}
+{"topic": "build.done", "payload": "Done"}
+{"topic": "build.task", "payload": "Add documentation"}
+{"topic": "build.done", "payload": "Done"}
+{"topic": "loop.terminate", "payload": "LOOP_COMPLETE"}
