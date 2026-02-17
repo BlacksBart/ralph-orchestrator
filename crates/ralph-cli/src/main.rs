@@ -2283,19 +2283,31 @@ handle requirements gathering, architecture, design review, codebase exploration
 planning, task generation, TDD implementation, validation, and committing — in sequence.
 No hat does more than one job. This is Ralph's most comprehensive workflow.
 
+## Human Interaction
+This preset is fully autonomous. The Inquisitor/Architect Q&A loop is hat-to-hat
+dialogue — the Inquisitor publishes `question.asked`, the Architect researches the
+codebase and publishes `answer.proposed`. The human is NOT in this loop.
+
+To inject human input, use the standard Ralph mechanisms:
+- TUI guidance: press `:` to queue for next iteration, `!` to inject now
+- Event injection: `ralph emit \"human.guidance\" \"use Postgres, not SQLite\"`
+- RObot/Telegram: if configured, any hat can emit `human.interact` to block and
+  wait for a human response — but none of the 9 hats in this preset do so by default.
+  The Builder and Validator are explicitly forbidden from using `human.interact`.
+
 ## Quick Start
 1. `ralph init --preset pdd-to-code-assist` (or use inline: `-c builtin:pdd-to-code-assist`)
 2. `ralph run -p \"Build a REST API for user management with JWT auth\"`
 3. Ralph handles everything: requirements Q&A → design → research → plan → tasks → TDD → commit
 
 ## Hat Flow
-Inquisitor (requirements Q&A) → Architect (design doc) → Design Critic (approve/reject) →
+Inquisitor (requirements Q&A) ⇄ Architect (research & answer) → Design Critic (approve/reject) →
 Explorer (codebase research) → Planner (implementation plan) → Task Writer (.code-task.md files) →
 Builder (TDD: red/green/refactor) → Validator (full test suite) → Committer (atomic commits)
 
-Events: design.start → requirements.complete → design.drafted → design.approved →
-context.ready → plan.ready → tasks.ready → implementation.ready →
-validation.passed → commit.complete → LOOP_COMPLETE
+Events: design.start → question.asked ⇄ answer.proposed (loop) → requirements.complete →
+design.drafted → design.approved → context.ready → plan.ready → tasks.ready →
+implementation.ready → validation.passed → commit.complete → LOOP_COMPLETE
 
 ## Steering
 - Press `:` in TUI to add context (\"use Postgres, not SQLite\" or \"skip the admin endpoints\")
@@ -2319,6 +2331,14 @@ validation.passed → commit.complete → LOOP_COMPLETE
 A flexible TDD implementation workflow that auto-detects your starting point — a PDD
 output directory, a .code-task.md file, or a plain description. Four hats handle planning,
 building (red/green/refactor TDD), validation, and committing.
+
+## Human Interaction
+Fully autonomous. The Builder and Validator are explicitly forbidden from emitting
+`human.interact` (the blocking event that sends questions to Telegram). All implementation
+decisions are made without human input. To steer mid-run:
+- TUI: press `:` to queue guidance for next iteration, `!` to inject immediately
+- Event: `ralph emit \"human.guidance\" \"focus on the happy path first\"`
+- RObot/Telegram: send proactive guidance (non-blocking, injected as context)
 
 ## Quick Start
 1. `ralph run -c builtin:code-assist -p \"Implement the user auth module from specs/user-auth/\"`
@@ -2525,6 +2545,14 @@ Events: gap.start → analyze.spec → verify.complete → report.request → re
 Enforces the scientific method for bug fixing: reproduce with a failing test first,
 then fix, then verify. Four hats ensure the Reproducer never fixes, the Fixer never
 skips reproduction, and the Verifier catches regressions.
+
+## Human Interaction
+Fully autonomous. The Fixer is explicitly forbidden from emitting `human.interact`
+(the blocking event that sends questions to Telegram). All diagnostic and fix decisions
+are made without human input. Provide detailed reproduction steps in the prompt upfront.
+To steer mid-run:
+- TUI: press `:` to queue guidance, `!` to inject immediately
+- Event: `ralph emit \"human.guidance\" \"the bug is in the auth middleware\"`
 
 ## Quick Start
 1. `ralph run -c builtin:bugfix -p \"Fix: [describe bug and reproduction steps]\"`
