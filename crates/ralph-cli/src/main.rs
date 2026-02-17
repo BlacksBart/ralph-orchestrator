@@ -365,7 +365,7 @@ pub(crate) fn load_config_with_overrides(
 
 /// Ralph Orchestrator - Multi-agent orchestration framework
 #[derive(Parser, Debug)]
-#[command(name = "ralph", version, about)]
+#[command(name = "ralph", version, about, disable_help_subcommand = true)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -444,6 +444,10 @@ enum Commands {
 
     /// Generate shell completions
     Completions(CompletionsArgs),
+
+    /// Show help. Use -v for verbose help with examples and motivation.
+    #[command(name = "help")]
+    Help(HelpArgs),
 }
 
 /// Arguments for the init subcommand.
@@ -666,6 +670,22 @@ struct TutorialArgs {
     no_input: bool,
 }
 
+/// Arguments for the help subcommand.
+#[derive(Parser, Debug)]
+struct HelpArgs {
+    /// Show detailed help with examples and motivation for each tool
+    #[arg(short, long)]
+    verbose: bool,
+
+    /// Emit a prompt teaching an LLM how to use Ralph for a scenario.
+    /// Without a name, lists available scenarios.
+    #[arg(short, long)]
+    prompt: bool,
+
+    /// Topic (with -v) or scenario (with --prompt)
+    topic: Option<String>,
+}
+
 /// Arguments for the plan subcommand.
 ///
 /// Starts an interactive PDD (Prompt-Driven Development) session.
@@ -861,6 +881,7 @@ async fn main() -> Result<()> {
             bot::execute(args, &config_sources, cli.color.should_use_colors()).await
         }
         Some(Commands::Completions(args)) => completions_command(args),
+        Some(Commands::Help(args)) => help_command(cli.color, args),
         None => {
             // Default to run with TUI enabled (new default behavior)
             let args = RunArgs {
@@ -2080,6 +2101,977 @@ fn print_tutorial_outro(use_colors: bool) {
         );
     } else {
         println!("Tutorial complete. Next: ralph init --list-presets, then ralph run.");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Help command
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct HelpTopic {
+    name: &'static str,
+    tagline: &'static str,
+    why: &'static [&'static str],
+    examples: &'static [&'static str],
+}
+
+const HELP_TOPICS: &[HelpTopic] = &[
+    HelpTopic {
+        name: "hats",
+        tagline: "Event-driven personas that separate concerns",
+        why: &[
+            "Without hats, one agent tries to plan, build, review, and commit all at once.",
+            "It loses focus, skips steps, and produces mediocre output. Hats force separation",
+            "of concerns — the Builder never reviews its own code, the Reviewer never edits files.",
+            "Each hat has its own system prompt, triggers (events it listens to), and outputs",
+            "(events it publishes). This means hats compose like UNIX pipes.",
+        ],
+        examples: &[
+            "# Minimal 2-hat ralph.yml:",
+            "  hats:",
+            "    builder:",
+            "      triggers: [task.start, review.revision_needed]",
+            "      publishes: [build.done]",
+            "      instructions: \"Write code. Run tests. Publish build.done when green.\"",
+            "    reviewer:",
+            "      triggers: [build.done]",
+            "      publishes: [review.approved, review.revision_needed]",
+            "      instructions: \"Review diffs. Never edit files. Approve or request revision.\"",
+            "",
+            "# Inspect configured hats:",
+            "  ralph hats list",
+            "  ralph hats graph --format ascii",
+        ],
+    },
+    HelpTopic {
+        name: "presets",
+        tagline: "Battle-tested workflow templates",
+        why: &[
+            "Writing a multi-hat workflow from scratch is error-prone. Presets are",
+            "battle-tested YAML files that encode proven patterns — like starter",
+            "templates for orchestration. You pick one, customize it, and run.",
+        ],
+        examples: &[
+            "# List available presets:",
+            "  ralph init --list-presets",
+            "",
+            "# Generate config from a preset:",
+            "  ralph init --preset bugfix",
+            "",
+            "# Run directly from a built-in preset (no file needed):",
+            "  ralph run -c builtin:code-assist",
+        ],
+    },
+    HelpTopic {
+        name: "memories",
+        tagline: "Persistent knowledge across sessions",
+        why: &[
+            "Each loop iteration starts with fresh context — the agent forgets what it",
+            "learned last time. Memories persist knowledge across sessions: codebase patterns",
+            "it discovered, decisions it made and why, fixes for problems that recur. Without",
+            "memories, the agent re-discovers the same things every run.",
+        ],
+        examples: &[
+            "# Add a memory:",
+            "  ralph tools memory add \"pattern\" \"Always run cargo fmt before committing\"",
+            "",
+            "# Search memories:",
+            "  ralph tools memory search \"cargo\"",
+            "",
+            "# Prime memories into context at loop start:",
+            "  ralph tools memory prime",
+            "",
+            "# Memory file: .ralph/agent/memories.md",
+            "# Types: pattern, decision, fix, context",
+        ],
+    },
+    HelpTopic {
+        name: "events",
+        tagline: "Decoupled communication between hats",
+        why: &[
+            "Events are how hats talk to each other without coupling. A Builder doesn't call",
+            "the Reviewer — it publishes build.done and the Reviewer's trigger fires. This",
+            "means you can add, remove, or reorder hats without rewriting instructions.",
+            "Events also give you a complete audit trail of what happened and when.",
+        ],
+        examples: &[
+            "# Emit an event manually:",
+            "  ralph emit \"build.done\" \"tests pass\"",
+            "",
+            "# View recent events:",
+            "  ralph events --last 5",
+            "",
+            "# Event XML format in agent output:",
+            "  <ralph:event topic=\"build.done\">tests pass</ralph:event>",
+            "",
+            "# Triggers support glob matching:",
+            "  triggers: [build.*, review.approved]",
+        ],
+    },
+    HelpTopic {
+        name: "loops",
+        tagline: "Steering a running orchestration process",
+        why: &[
+            "Ralph loops run autonomously, but sometimes you need to course-correct",
+            "mid-flight — the agent is heading down the wrong path, you want to add",
+            "context it doesn't have, or you need to stop it gracefully. Loop interaction",
+            "gives you a control plane for a running process without killing and restarting it.",
+        ],
+        examples: &[
+            "# TUI guidance (while ralph is running in TUI mode):",
+            "  Press : to queue guidance for the next iteration",
+            "  Press ! to inject guidance immediately",
+            "",
+            "# Inject guidance via event:",
+            "  ralph emit \"human.guidance\" \"focus on the API layer, skip the UI\"",
+            "",
+            "# Monitor loops:",
+            "  ralph loops list",
+            "  ralph loops logs <id> --follow",
+            "",
+            "# Graceful stop (terminates at next iteration boundary):",
+            "  ralph loops stop",
+            "",
+            "# Resume after stop:",
+            "  ralph run --continue",
+            "",
+            "# Telegram (remote steering):",
+            "  Send messages to the bot; use /status, /stop, /tail",
+            "",
+            "# Parallel loops (worktree-isolated):",
+            "  ralph loops list --all",
+        ],
+    },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Help --prompt: SDLC-aware prompt generator
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct HelpPrompt {
+    /// Scenario name used on CLI — matches preset name where applicable
+    name: &'static str,
+    /// Category for grouping in listing output
+    category: &'static str,
+    /// One-line description for the listing
+    summary: &'static str,
+    /// The full prompt text (valid markdown, no ANSI)
+    body: &'static str,
+}
+
+const HELP_PROMPT_CATEGORIES: &[&str] = &[
+    "End-to-End",
+    "Implementation",
+    "Quality",
+    "Fixing & Debugging",
+    "Maintenance",
+    "Operations",
+];
+
+const HELP_PROMPTS: &[HelpPrompt] = &[
+    // ── End-to-End ──────────────────────────────────────────────────────────
+    HelpPrompt {
+        name: "pdd-to-code-assist",
+        category: "End-to-End",
+        summary: "Full autonomous pipeline from idea to committed code",
+        body: "\
+# Using Ralph: pdd-to-code-assist
+
+## What This Does
+The full autonomous pipeline from rough idea to committed code. Nine specialized hats
+handle requirements gathering, architecture, design review, codebase exploration,
+planning, task generation, TDD implementation, validation, and committing — in sequence.
+No hat does more than one job. This is Ralph's most comprehensive workflow.
+
+## Quick Start
+1. `ralph init --preset pdd-to-code-assist` (or use inline: `-c builtin:pdd-to-code-assist`)
+2. `ralph run -p \"Build a REST API for user management with JWT auth\"`
+3. Ralph handles everything: requirements Q&A → design → research → plan → tasks → TDD → commit
+
+## Hat Flow
+Inquisitor (requirements Q&A) → Architect (design doc) → Design Critic (approve/reject) →
+Explorer (codebase research) → Planner (implementation plan) → Task Writer (.code-task.md files) →
+Builder (TDD: red/green/refactor) → Validator (full test suite) → Committer (atomic commits)
+
+Events: design.start → requirements.complete → design.drafted → design.approved →
+context.ready → plan.ready → tasks.ready → implementation.ready →
+validation.passed → commit.complete → LOOP_COMPLETE
+
+## Steering
+- Press `:` in TUI to add context (\"use Postgres, not SQLite\" or \"skip the admin endpoints\")
+- `ralph emit \"human.guidance\" \"the auth module is in src/auth/, follow its patterns\"`
+- If design is wrong: stop early, edit specs/{task}/design.md, resume with `ralph run --continue`
+
+## Anti-Patterns
+- Don't provide an implementation plan in the prompt — let the Inquisitor/Architect discover it
+- Don't micro-manage — the 9-hat pipeline has built-in quality gates at every transition
+- Don't use this for small fixes — it's heavyweight; use `bugfix` or `code-assist` instead",
+    },
+    // ── Implementation ──────────────────────────────────────────────────────
+    HelpPrompt {
+        name: "code-assist",
+        category: "Implementation",
+        summary: "Flexible TDD implementation from any starting point",
+        body: "\
+# Using Ralph: code-assist
+
+## What This Does
+A flexible TDD implementation workflow that auto-detects your starting point — a PDD
+output directory, a .code-task.md file, or a plain description. Four hats handle planning,
+building (red/green/refactor TDD), validation, and committing.
+
+## Quick Start
+1. `ralph run -c builtin:code-assist -p \"Implement the user auth module from specs/user-auth/\"`
+2. Or from a task file: `ralph run -c builtin:code-assist -p \"Implement specs/user-auth/tasks/task-01-models.code-task.md\"`
+3. Or ad-hoc: `ralph run -c builtin:code-assist -p \"Add input validation to the signup form\"`
+
+## Hat Flow
+Planner (detect input, create tasks) → Builder (TDD cycle per task) →
+Validator (full test suite) → Committer (atomic commit)
+
+Events: build.start → tasks.ready → implementation.ready → validation.passed → commit.complete → LOOP_COMPLETE
+
+## Steering
+- Press `:` in TUI to refine scope (\"skip the edge case tests for now, focus on happy path\")
+- `ralph loops stop` to pause; `ralph run --continue` to resume
+
+## Anti-Patterns
+- Don't mix multiple unrelated features in one prompt — one logical unit per run
+- Don't skip the Planner by providing implementation details — let it decompose the work",
+    },
+    HelpPrompt {
+        name: "feature",
+        category: "Implementation",
+        summary: "Build a feature with integrated code review",
+        body: "\
+# Using Ralph: feature
+
+## What This Does
+A lightweight two-hat workflow: Builder implements, Reviewer reviews. The Builder can't
+review its own code and the Reviewer can't edit files. This separation catches issues
+that a single-agent approach misses.
+
+## Quick Start
+1. `ralph run -c builtin:feature -p \"Add a /users/:id endpoint that returns user profile data\"`
+2. Ralph builds, then reviews, iterating until the Reviewer approves
+
+## Hat Flow
+Builder → Reviewer (approve or request changes → Builder again)
+
+Events: build.task → build.done → review.request → review.approved → LOOP_COMPLETE
+
+## Steering
+- Press `:` in TUI to add context (\"follow the pattern in src/routes/posts.rs\")
+- `ralph emit \"human.guidance\" \"prioritize error handling over edge cases\"`
+- `ralph loops stop` to pause; `ralph run --continue` to resume
+
+## Anti-Patterns
+- Don't use for large features — use `pdd-to-code-assist` or `code-assist` with task decomposition
+- Don't override the Reviewer's findings — they exist to catch what the Builder missed",
+    },
+    HelpPrompt {
+        name: "spec-driven",
+        category: "Implementation",
+        summary: "Specification-first development pipeline",
+        body: "\
+# Using Ralph: spec-driven
+
+## What This Does
+Contract-first development: write a spec with Given-When-Then acceptance criteria,
+critique it for completeness, implement exactly to spec, then verify every criterion.
+Four hats ensure the spec is solid before any code is written.
+
+## Quick Start
+1. `ralph run -c builtin:spec-driven -p \"Build a rate limiter: 100 req/min per API key, sliding window\"`
+2. Ralph writes the spec, reviews it, implements, then verifies against each criterion
+
+## Hat Flow
+Spec Writer → Spec Reviewer (approve/reject) → Implementer → Verifier (pass or spec violation → Implementer)
+
+Events: spec.start → spec.ready → spec.approved → implementation.done → task.complete
+
+## Steering
+- Press `:` to refine requirements (\"add a criterion for burst handling\")
+- If spec is rejected too many times: stop, edit the spec directly, resume
+
+## Anti-Patterns
+- Don't provide implementation hints — the spec is the contract, implementation follows
+- Don't skip the Spec Reviewer — catching ambiguity before code saves iteration cycles",
+    },
+    // ── Quality ─────────────────────────────────────────────────────────────
+    HelpPrompt {
+        name: "review",
+        category: "Quality",
+        summary: "Code review without modifications",
+        body: "\
+# Using Ralph: review
+
+## What This Does
+Read-only code review. Two hats — Reviewer and Deep Analyzer — examine code without
+modifying it. The Reviewer identifies issues section by section, the Analyzer dives
+deeper on flagged areas. Output is structured feedback (Critical/Suggestions/Nitpicks).
+
+## Quick Start
+1. `ralph run -c builtin:review -p \"Review src/auth/ for security and correctness\"`
+2. Ralph reads, analyzes, and produces a review — no files are modified
+
+## Hat Flow
+Reviewer (section-by-section review) → Analyzer (deep dive on flagged areas) → Reviewer (synthesize)
+
+Events: review.start → review.section → analysis.complete → review.complete → REVIEW_COMPLETE
+
+## Steering
+- Press `:` to focus the review (\"focus on the JWT validation logic, skip the middleware\")
+
+## Anti-Patterns
+- Don't expect code changes — this is read-only; use `feature` or `code-assist` for fixes
+- Don't review the entire codebase at once — scope to a module or directory",
+    },
+    HelpPrompt {
+        name: "pr-review",
+        category: "Quality",
+        summary: "Multi-perspective pull request review",
+        body: "\
+# Using Ralph: pr-review
+
+## What This Does
+Reviews a pull request from three independent perspectives — correctness, security, and
+architecture — then synthesizes a unified verdict. Each reviewer hat is isolated: the
+security reviewer doesn't care about style, the architecture reviewer doesn't nitpick bugs.
+
+## Quick Start
+1. `ralph run -c builtin:pr-review -p \"Review PR #42: adds OAuth2 login flow\"`
+2. Ralph produces three independent reviews, then a synthesized APPROVE or REQUEST_CHANGES
+
+## Hat Flow
+Correctness Reviewer + Security Reviewer + Architecture Reviewer → Synthesizer (unified verdict)
+
+Events: review.correctness → correctness.done, review.security → security.done,
+review.architecture → architecture.done → synthesis.request → review.complete → LOOP_COMPLETE
+
+## Steering
+- Press `:` to add context (\"this is a security-sensitive endpoint, weight security review higher\")
+
+## Anti-Patterns
+- Don't ask it to also fix the issues — this is review-only; file separate bugfix/feature runs
+- Don't skip the synthesis — individual reviews may conflict; the Synthesizer resolves them",
+    },
+    HelpPrompt {
+        name: "fresh-eyes",
+        category: "Quality",
+        summary: "Repeated self-review enforcement (min 3 passes)",
+        body: "\
+# Using Ralph: fresh-eyes
+
+## What This Does
+Builds a feature then forces a minimum of 3 fresh-eyes review passes. Each audit pass
+starts with fresh context, reviewing as if seeing the code for the first time. A Gatekeeper
+requires 2 consecutive clean passes before approving. Hard stop at 8 passes.
+
+## Quick Start
+1. `ralph run -c builtin:fresh-eyes -p \"Implement the payment processing module\"`
+2. Ralph builds, then audits repeatedly until 2 consecutive clean passes or 8 total
+
+## Hat Flow
+Builder → Fresh Eyes Auditor (min 3 passes) → Gatekeeper (2 consecutive clean? → done or continue)
+
+Events: fresh_eyes.start → build.complete → fresh_eyes.continue (loop) → fresh_eyes.done → LOOP_COMPLETE
+
+## Steering
+- Press `:` to guide the auditor (\"pay extra attention to error handling in the webhook path\")
+- If stuck in audit loop: `ralph loops stop`, review findings, fix manually, resume
+
+## Anti-Patterns
+- Don't use for trivial changes — the 3-pass minimum is overhead for simple fixes
+- Don't increase the pass limit beyond 8 — if it hasn't stabilized by then, the scope is too large",
+    },
+    HelpPrompt {
+        name: "gap-analysis",
+        category: "Quality",
+        summary: "Deep comparison of specs against implementation",
+        body: "\
+# Using Ralph: gap-analysis
+
+## What This Does
+Compares specifications against implementation to find gaps. Three hats coordinate:
+Analyzer reads specs and code, Verifier checks specific claims, Reporter produces a
+categorized ISSUES.md (Critical/Missing/Undocumented/Improvements).
+
+## Quick Start
+1. `ralph run -c builtin:gap-analysis -p \"Compare specs/auth/ against src/auth/ implementation\"`
+2. Ralph produces ISSUES.md with categorized gaps
+
+## Hat Flow
+Analyzer (coordinate) → Verifier (check specific gaps) → Reporter (categorized output)
+
+Events: gap.start → analyze.spec → verify.complete → report.request → report.complete → GAP_ANALYSIS_COMPLETE
+
+## Steering
+- Press `:` to scope (\"focus on the authentication flow, skip authorization for now\")
+
+## Anti-Patterns
+- Don't expect fixes — this is analysis-only; use findings to create bugfix or feature runs
+- Don't skip providing spec paths — the Analyzer needs both spec and code to compare",
+    },
+    // ── Fixing & Debugging ──────────────────────────────────────────────────
+    HelpPrompt {
+        name: "bugfix",
+        category: "Fixing & Debugging",
+        summary: "Scientific method: reproduce → fix → verify → commit",
+        body: "\
+# Using Ralph: bugfix
+
+## What This Does
+Enforces the scientific method for bug fixing: reproduce with a failing test first,
+then fix, then verify. Four hats ensure the Reproducer never fixes, the Fixer never
+skips reproduction, and the Verifier catches regressions.
+
+## Quick Start
+1. `ralph run -c builtin:bugfix -p \"Fix: [describe bug and reproduction steps]\"`
+2. Ralph creates a failing test, fixes the code, verifies, and commits
+
+## Hat Flow
+Reproducer → Fixer → Verifier → Committer
+
+Events: repro.start → repro.complete → fix.complete → verification.passed → LOOP_COMPLETE
+
+If verification fails: verification.failed → Reproducer (re-examine)
+
+## Steering
+- Press `:` in TUI to add context (\"the bug is in the auth middleware, not the route handler\")
+- `ralph emit \"human.guidance\" \"check error handling in src/api/auth.rs\"`
+- `ralph loops stop` to pause; `ralph run --continue` to resume
+
+## Anti-Patterns
+- Don't write the fix yourself and ask Ralph to \"verify it\" — let the Reproducer find it
+- Don't skip the failing test — it's the proof the bug existed and the regression gate
+- Don't provide a multi-bug prompt — one bug per run, always",
+    },
+    HelpPrompt {
+        name: "debug",
+        category: "Fixing & Debugging",
+        summary: "Hypothesis-driven bug investigation and root cause analysis",
+        body: "\
+# Using Ralph: debug
+
+## What This Does
+Systematic debugging through hypothesis testing. The Investigator forms hypotheses,
+the Tester designs experiments to confirm or reject them, the Fixer applies the fix
+once root cause is confirmed, and the Verifier ensures the fix holds. Prevents
+guess-and-check debugging.
+
+## Quick Start
+1. `ralph run -c builtin:debug -p \"Debug: API returns 500 on POST /users with valid payload\"`
+2. Ralph investigates, forms hypotheses, tests them, fixes the confirmed root cause
+
+## Hat Flow
+Investigator → Tester (confirm/reject hypothesis) → Fixer → Verifier
+
+Events: debug.start → hypothesis.test → hypothesis.confirmed → fix.propose →
+fix.applied → fix.verified → DEBUG_COMPLETE
+
+If hypothesis rejected: hypothesis.rejected → Investigator (new hypothesis)
+
+## Steering
+- Press `:` to share observations (\"I noticed it only happens with Unicode usernames\")
+- `ralph emit \"human.guidance\" \"the database logs show a constraint violation\"`
+
+## Anti-Patterns
+- Don't provide the fix in the prompt — let the Investigator discover root cause
+- Don't use for known bugs with clear reproduction — use `bugfix` instead
+- Don't combine with feature work — debug is investigation-only",
+    },
+    // ── Maintenance ─────────────────────────────────────────────────────────
+    HelpPrompt {
+        name: "refactor",
+        category: "Maintenance",
+        summary: "Safe incremental refactoring with verification",
+        body: "\
+# Using Ralph: refactor
+
+## What This Does
+Safe incremental refactoring: each step is atomic and leaves the codebase in a working
+state. Two hats — Refactorer makes changes, Verifier confirms nothing broke. Frequent
+git checkpoints (every 3 steps) so you can always roll back.
+
+## Quick Start
+1. `ralph run -c builtin:refactor -p \"Refactor: extract the validation logic from UserController into a ValidationService\"`
+2. Ralph refactors in small verified steps, checkpointing along the way
+
+## Hat Flow
+Refactorer → Verifier (pass → next step or done, fail → Refactorer fixes)
+
+Events: refactor.task → refactor.done → verify.passed → REFACTOR_COMPLETE
+
+## Steering
+- Press `:` to scope (\"only refactor the public API, leave internals for now\")
+- `ralph loops stop` to pause; `ralph run --continue` to resume
+
+## Anti-Patterns
+- Don't combine refactoring with new features — refactor = same behavior, different structure
+- Don't skip the Verifier — every step must leave tests green",
+    },
+    HelpPrompt {
+        name: "research",
+        category: "Maintenance",
+        summary: "Deep exploration without code changes",
+        body: "\
+# Using Ralph: research
+
+## What This Does
+Pure exploration — reads code, analyzes patterns, produces findings — without modifying
+any files. Two hats: Researcher explores and reports findings, Synthesizer consolidates
+into actionable summaries with file:line references.
+
+## Quick Start
+1. `ralph run -c builtin:research -p \"Research: how does the event system route messages between hats?\"`
+2. Ralph explores, produces findings with citations, then synthesizes
+
+## Hat Flow
+Researcher (explore, report findings) → Synthesizer (consolidate, follow up or complete)
+
+Events: research.start → research.finding → research.followup (loop) → synthesis.complete → RESEARCH_COMPLETE
+
+## Steering
+- Press `:` to redirect (\"also look at how errors propagate through the event bus\")
+
+## Anti-Patterns
+- Don't expect code changes — this is read-only; use findings to plan implementation
+- Don't ask for implementation recommendations — research observes, it doesn't prescribe",
+    },
+    HelpPrompt {
+        name: "docs",
+        category: "Maintenance",
+        summary: "Documentation with writer/reviewer cycle",
+        body: "\
+# Using Ralph: docs
+
+## What This Does
+Documentation writing with a writer/reviewer cycle. The Writer drafts sections, the
+Reviewer checks for accuracy, completeness, and clarity. Iterates until the Reviewer
+approves. Ensures docs match the actual code.
+
+## Quick Start
+1. `ralph run -c builtin:docs -p \"Write API documentation for the /users endpoints in src/routes/users.rs\"`
+2. Ralph writes, reviews, revises, and produces final documentation
+
+## Hat Flow
+Writer (draft sections) → Reviewer (approve or request revision → Writer again)
+
+Events: write.section → write.done → review.done or review.revision → DOCS_COMPLETE
+
+## Steering
+- Press `:` to guide style (\"use the same format as docs/api/posts.md\")
+
+## Anti-Patterns
+- Don't provide the documentation text — let the Writer read the code and write from it
+- Don't ask for code changes alongside docs — use a separate `feature` or `bugfix` run",
+    },
+    HelpPrompt {
+        name: "deploy",
+        category: "Maintenance",
+        summary: "Deployment with validation and rollback",
+        body: "\
+# Using Ralph: deploy
+
+## What This Does
+Deployment workflow with built-in validation and automatic rollback. Three hats: Builder
+prepares artifacts, Deployer executes deployment, Verifier runs post-deploy checks. If
+verification fails, the Deployer can rollback.
+
+## Quick Start
+1. `ralph run -c builtin:deploy -p \"Deploy: release v2.1.0 to staging environment\"`
+2. Ralph builds, deploys, verifies, and rolls back if needed
+
+## Hat Flow
+Builder (prepare) → Deployer (execute) → Verifier (post-deploy checks)
+
+Events: build.task → build.done → deploy.ready → deploy.start → deploy.done →
+verify.pass → LOOP_COMPLETE
+
+If verification fails: verify.fail → deploy.rollback → deploy.failed
+
+## Steering
+- Press `:` to add context (\"skip the integration tests, just run smoke tests\")
+- `ralph loops stop` for emergency stop
+
+## Anti-Patterns
+- Don't skip the Verifier — post-deploy validation is the safety net
+- Don't combine deploy with feature work — deploy is release-only",
+    },
+    // ── Operations ──────────────────────────────────────────────────────────
+    HelpPrompt {
+        name: "steering",
+        category: "Operations",
+        summary: "Course-correct a running Ralph loop",
+        body: "\
+# Using Ralph: Steering a Running Loop
+
+## What This Does
+Ralph loops run autonomously, but you can course-correct mid-flight without
+killing and restarting. This is the control plane for a running orchestration.
+
+## Guidance Methods (least to most disruptive)
+1. TUI queued: Press `:` → type guidance → queued for next iteration
+2. TUI immediate: Press `!` → injected into current iteration
+3. Event injection: `ralph emit \"human.guidance\" \"focus on X, skip Y\"`
+4. Telegram: send message to bot (if RObot configured) for remote steering
+5. Graceful stop: `ralph loops stop` → finishes current iteration, then exits
+
+## Monitoring
+- TUI shows live agent output, current hat, iteration count
+- `ralph loops list` — see all running loops with status
+- `ralph loops logs <id> --follow` — tail a specific loop
+- `ralph events --last 10` — recent event history
+
+## Recovery
+- After `ralph loops stop`: `ralph run --continue` picks up from scratchpad/tasks
+- Loop stuck: stop, review `.ralph/agent/scratchpad.md`, add memories, resume
+- Wrong direction: stop, refine the prompt, resume
+
+## Anti-Patterns
+- Don't kill the process (Ctrl+C twice) — use graceful stop so state is preserved
+- Don't edit files while Ralph is running — it will overwrite your changes
+- Don't inject guidance every iteration — let the agent work, steer only when off-track",
+    },
+    HelpPrompt {
+        name: "parallel",
+        category: "Operations",
+        summary: "Run multiple loops via worktree isolation",
+        body: "\
+# Using Ralph: Parallel Loops
+
+## What This Does
+Run multiple Ralph orchestration loops simultaneously using git worktrees for filesystem
+isolation. Each loop gets its own branch and working directory. When a worktree loop
+completes, it queues for merge back to the main workspace.
+
+## Quick Start
+1. Start the primary loop: `ralph run -p \"Add user authentication\"`
+2. In another terminal: `ralph run -p \"Add logging middleware\"` (auto-creates worktree)
+3. Monitor all loops: `ralph loops list --all`
+4. Primary loop processes the merge queue when worktree loops complete
+
+## Architecture
+Primary Loop (holds .ralph/loop.lock)
+├── Runs in main workspace
+├── Processes merge queue on completion
+└── Spawns merge-ralph for queued loops
+
+Worktree Loops (.worktrees/<loop-id>/)
+├── Isolated filesystem via git worktree
+├── Symlinked memories, specs, tasks → main repo
+├── Queue for merge on completion
+└── Exit cleanly (no spawn)
+
+## Steering
+- `ralph loops list --all` — see all loops with status
+- `ralph loops stop <id>` — stop a specific loop
+- Messages default to the primary loop; use `@loop-id` prefix to target a worktree loop
+
+## Anti-Patterns
+- Don't run parallel loops that modify the same files — merge conflicts will block
+- Don't run more parallel loops than your machine can handle — each spawns an agent process
+- Don't skip the merge queue — let merge-ralph handle conflict resolution",
+    },
+    HelpPrompt {
+        name: "memories",
+        category: "Operations",
+        summary: "Teach Ralph about your codebase patterns",
+        body: "\
+# Using Ralph: Memories
+
+## What This Does
+Each loop iteration starts with fresh context — the agent forgets what it learned.
+Memories persist knowledge across sessions so Ralph doesn't re-discover the same things
+every run. Four types: pattern, decision, fix, context.
+
+## Memory Types
+- **pattern**: Codebase conventions (\"All API handlers return Result<Json<T>, AppError>\")
+- **decision**: Architectural choices (\"Chose JSONL over SQLite: simpler, git-friendly\")
+- **fix**: Recurring problem solutions (\"ECONNREFUSED on :5432 means run docker-compose up\")
+- **context**: Project-specific knowledge (\"The /legacy folder is deprecated, use /v2\")
+
+## Commands
+- `ralph tools memory add \"content\" -t pattern --tags api,conventions`
+- `ralph tools memory search \"query\" -t pattern`
+- `ralph tools memory list -t decision`
+- `ralph tools memory prime --budget 2000` (inject into next iteration's context)
+- `ralph tools memory show <id>` / `ralph tools memory delete <id>`
+
+## Storage
+Memories live in `.ralph/agent/memories.md`. They are automatically injected into
+prompts when enabled (default). Each memory has an ID like `mem-1737372000-a1b2`.
+
+## When to Create Memories
+- After discovering a codebase pattern the agent keeps missing
+- After making an architectural decision you want persisted
+- After fixing a recurring problem
+- Before a long run, to prime context about unfamiliar code
+
+## Anti-Patterns
+- Don't create memories for temporary state — use the scratchpad for that
+- Don't create duplicate memories — search first
+- Don't over-prime — respect the token budget, prioritize high-value memories",
+    },
+];
+
+fn help_command(color_mode: ColorMode, args: HelpArgs) -> Result<()> {
+    let use_colors = color_mode.should_use_colors();
+
+    // --prompt takes priority
+    if args.prompt {
+        return match &args.topic {
+            Some(name) => print_help_prompt(name),
+            None => {
+                print_help_prompts_list(use_colors);
+                Ok(())
+            }
+        };
+    }
+
+    if args.verbose {
+        return match &args.topic {
+            Some(topic) => {
+                let name = topic.to_lowercase();
+                match HELP_TOPICS.iter().find(|t| t.name == name) {
+                    Some(t) => {
+                        print_help_topic(t, use_colors);
+                        Ok(())
+                    }
+                    None => {
+                        eprintln!(
+                            "Unknown topic: {}. Available: {}",
+                            topic,
+                            HELP_TOPICS
+                                .iter()
+                                .map(|t| t.name)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
+            None => {
+                for (i, topic) in HELP_TOPICS.iter().enumerate() {
+                    print_help_topic(topic, use_colors);
+                    if i + 1 < HELP_TOPICS.len() {
+                        println!();
+                    }
+                }
+                Ok(())
+            }
+        };
+    }
+
+    // Default: concise help
+    print_help_concise(use_colors);
+    Ok(())
+}
+
+fn print_help_prompts_list(use_colors: bool) {
+    if use_colors {
+        println!(
+            "{}{}Available prompts{} (ralph help --prompt <name>):\n",
+            colors::BOLD,
+            colors::CYAN,
+            colors::RESET
+        );
+    } else {
+        println!("Available prompts (ralph help --prompt <name>):\n");
+    }
+
+    for category in HELP_PROMPT_CATEGORIES {
+        if use_colors {
+            println!("  {}{}:{}", colors::BOLD, category, colors::RESET);
+        } else {
+            println!("  {}:", category);
+        }
+
+        for prompt in HELP_PROMPTS.iter().filter(|p| p.category == *category) {
+            if use_colors {
+                println!(
+                    "    {}{}{:<24}{}  {}",
+                    colors::BOLD,
+                    colors::GREEN,
+                    prompt.name,
+                    colors::RESET,
+                    prompt.summary
+                );
+            } else {
+                println!("    {:<24}  {}", prompt.name, prompt.summary);
+            }
+        }
+        println!();
+    }
+
+    if use_colors {
+        println!("Usage: {}ralph help --prompt <name>{}", colors::BOLD, colors::RESET);
+        println!("       {}ralph help --prompt <name> | pbcopy{}", colors::DIM, colors::RESET);
+        println!("       {}ralph help --prompt <name> >> CLAUDE.md{}", colors::DIM, colors::RESET);
+    } else {
+        println!("Usage: ralph help --prompt <name>");
+        println!("       ralph help --prompt <name> | pbcopy");
+        println!("       ralph help --prompt <name> >> CLAUDE.md");
+    }
+}
+
+fn print_help_prompt(name: &str) -> Result<()> {
+    let name_lower = name.to_lowercase();
+    match HELP_PROMPTS.iter().find(|p| p.name == name_lower) {
+        Some(prompt) => {
+            // TTY hint
+            if std::io::stdout().is_terminal() {
+                println!("# Paste this into your CLAUDE.md or use as a system prompt\n");
+            }
+            // Always plain text (no ANSI) for prompt bodies
+            println!("{}", prompt.body);
+            Ok(())
+        }
+        None => {
+            eprintln!(
+                "Unknown scenario: {}. Available: {}",
+                name,
+                HELP_PROMPTS
+                    .iter()
+                    .map(|p| p.name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+fn print_help_concise(use_colors: bool) {
+    if use_colors {
+        println!(
+            "{}{}Ralph Orchestrator{} — hat-based multi-agent workflows\n",
+            colors::BOLD,
+            colors::CYAN,
+            colors::RESET
+        );
+    } else {
+        println!("Ralph Orchestrator — hat-based multi-agent workflows\n");
+    }
+
+    let commands = [
+        ("run", "Run the orchestration loop"),
+        ("init", "Initialize ralph.yml from a preset"),
+        ("hats", "Manage and inspect configured hats"),
+        ("events", "View event history"),
+        ("loops", "Manage and monitor parallel loops"),
+        ("tools", "Runtime tools (memory, task, skill)"),
+        ("tutorial", "Interactive walkthrough"),
+        ("doctor", "Environment diagnostics"),
+    ];
+
+    if use_colors {
+        println!("{}Commands:{}", colors::BOLD, colors::RESET);
+    } else {
+        println!("Commands:");
+    }
+
+    for (name, desc) in &commands {
+        if use_colors {
+            println!(
+                "  {}{}  {:<12}{}  {}",
+                colors::BOLD,
+                colors::GREEN,
+                name,
+                colors::RESET,
+                desc
+            );
+        } else {
+            println!("  {:<12}  {}", name, desc);
+        }
+    }
+
+    println!();
+    if use_colors {
+        println!(
+            "Use {}ralph help -v{} for detailed help with examples.",
+            colors::BOLD, colors::RESET
+        );
+        println!(
+            "Use {}ralph help -v <topic>{} for a specific topic: {}.",
+            colors::BOLD,
+            colors::RESET,
+            HELP_TOPICS
+                .iter()
+                .map(|t| t.name)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        println!(
+            "Use {}ralph help --prompt{} for LLM-ready prompts per workflow.",
+            colors::BOLD, colors::RESET
+        );
+    } else {
+        println!("Use ralph help -v for detailed help with examples.");
+        println!(
+            "Use ralph help -v <topic> for a specific topic: {}.",
+            HELP_TOPICS
+                .iter()
+                .map(|t| t.name)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        println!("Use ralph help --prompt for LLM-ready prompts per workflow.");
+    }
+}
+
+fn print_help_topic(topic: &HelpTopic, use_colors: bool) {
+    // Header
+    if use_colors {
+        println!(
+            "{}{}━━━ {} ━━━{}",
+            colors::BOLD,
+            colors::CYAN,
+            topic.name.to_uppercase(),
+            colors::RESET
+        );
+        println!(
+            "{}{}{}",
+            colors::DIM,
+            topic.tagline,
+            colors::RESET
+        );
+    } else {
+        println!("━━━ {} ━━━", topic.name.to_uppercase());
+        println!("{}", topic.tagline);
+    }
+    println!();
+
+    // Why section
+    if use_colors {
+        println!("{}Why:{}", colors::BOLD, colors::RESET);
+    } else {
+        println!("Why:");
+    }
+    for line in topic.why {
+        println!("  {}", line);
+    }
+    println!();
+
+    // Examples section
+    if use_colors {
+        println!("{}Examples:{}", colors::BOLD, colors::RESET);
+    } else {
+        println!("Examples:");
+    }
+    for line in topic.examples {
+        if use_colors && line.starts_with('#') {
+            println!(
+                "  {}{}{}",
+                colors::DIM,
+                line,
+                colors::RESET
+            );
+        } else {
+            println!("  {}", line);
+        }
     }
 }
 
