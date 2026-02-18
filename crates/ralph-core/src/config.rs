@@ -864,6 +864,24 @@ pub struct MemoriesConfig {
     /// Filter configuration for memory injection.
     #[serde(default)]
     pub filter: MemoriesFilter,
+
+    /// Shared memory corpora to include alongside local memories.
+    ///
+    /// Paths are resolved relative to the workspace root (or absolute).
+    /// Shared memories are read-only during a loop — writes always go to the
+    /// local `.ralph/agent/memories.md`. Each corpus is labeled by its
+    /// filename in the injected prompt so the agent knows the source.
+    ///
+    /// Example configuration:
+    /// ```yaml
+    /// memories:
+    ///   enabled: true
+    ///   shared:
+    ///     - ~/.ralph/corpora/pfm-system.md
+    ///     - ../shared-conventions/memories.md
+    /// ```
+    #[serde(default)]
+    pub shared: Vec<std::path::PathBuf>,
 }
 
 impl Default for MemoriesConfig {
@@ -873,6 +891,7 @@ impl Default for MemoriesConfig {
             inject: InjectMode::Auto,
             budget: 0,
             filter: MemoriesFilter::default(),
+            shared: Vec::new(),
         }
     }
 }

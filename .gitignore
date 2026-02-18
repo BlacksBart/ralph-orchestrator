@@ -111,6 +111,8 @@ PROMPT.md
 !.ralph/specs/**
 !.ralph/tasks/
 !.ralph/tasks/**
+!.ralph/prompts/
+!.ralph/prompts/**
 !.ralph/agent/
 !.ralph/agent/memories.md
 !.ralph/agent/tasks.jsonl

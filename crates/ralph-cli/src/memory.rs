@@ -11,7 +11,10 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use ralph_core::{MarkdownMemoryStore, Memory, MemoryType};
+use ralph_core::{
+    MarkdownMemoryStore, Memory, MemoryType,
+    format_memories_as_markdown_labeled as format_memories_labeled,
+};
 use std::path::PathBuf;
 
 /// ANSI color codes for terminal output.
@@ -198,6 +201,10 @@ pub struct PrimeArgs {
     /// Only memories from last N days
     #[arg(long)]
     pub recent: Option<u32>,
+
+    /// Shared corpus files to include (read-only, appended after local memories)
+    #[arg(long, value_name = "FILE")]
+    pub shared: Vec<PathBuf>,
 
     /// Output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Markdown)]
@@ -454,30 +461,78 @@ fn prime_command(store: &MarkdownMemoryStore, args: PrimeArgs) -> Result<()> {
         memories.retain(|m| m.created >= cutoff_str);
     }
 
-    if memories.is_empty() {
+    // Generate local output
+    let mut output = if memories.is_empty() {
+        String::new()
+    } else {
+        match args.format {
+            OutputFormat::Json => serde_json::to_string_pretty(&memories)?,
+            OutputFormat::Markdown | OutputFormat::Table | OutputFormat::Quiet => {
+                format_memories_as_markdown(&memories)
+            }
+        }
+    };
+
+    // Apply budget to local memories
+    if let Some(budget) = args.budget {
+        if budget > 0 && !output.is_empty() {
+            output = truncate_to_budget(&output, budget);
+        }
+    }
+
+    // Append shared corpora (read-only, labeled with source filename)
+    for shared_path in &args.shared {
+        let resolved = if let Ok(stripped) = shared_path.strip_prefix("~") {
+            if let Some(home) = std::env::var_os("HOME") {
+                std::path::PathBuf::from(home).join(stripped)
+            } else {
+                shared_path.clone()
+            }
+        } else {
+            shared_path.clone()
+        };
+
+        let shared_store = MarkdownMemoryStore::new(&resolved);
+        if !shared_store.exists() {
+            eprintln!(
+                "Warning: shared memory corpus not found: {}",
+                resolved.display()
+            );
+            continue;
+        }
+
+        let source_label = resolved
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("shared");
+
+        let shared_memories = shared_store
+            .load()
+            .with_context(|| format!("Failed to load shared corpus: {}", resolved.display()))?;
+
+        if shared_memories.is_empty() {
+            continue;
+        }
+
+        let mut shared_content = format_memories_labeled(&shared_memories, source_label);
+
+        if let Some(budget) = args.budget {
+            if budget > 0 {
+                shared_content = truncate_to_budget(&shared_content, budget);
+            }
+        }
+
+        if !output.is_empty() {
+            output.push_str("\n\n");
+        }
+        output.push_str(&shared_content);
+    }
+
+    if output.is_empty() {
         return Ok(());
     }
 
-    // Generate output
-    let output = match args.format {
-        OutputFormat::Json => serde_json::to_string_pretty(&memories)?,
-        OutputFormat::Markdown | OutputFormat::Table | OutputFormat::Quiet => {
-            format_memories_as_markdown(&memories)
-        }
-    };
-
-    // Apply budget if specified
-    let final_output = if let Some(budget) = args.budget {
-        if budget > 0 {
-            truncate_to_budget(&output, budget)
-        } else {
-            output
-        }
-    } else {
-        output
-    };
-
-    print!("{}", final_output);
+    print!("{}", output);
     Ok(())
 }
 

@@ -2729,6 +2729,120 @@ If verification fails: verify.fail → deploy.rollback → deploy.failed
     },
     // ── Operations ──────────────────────────────────────────────────────────
     HelpPrompt {
+        name: "multi-phase",
+        category: "Operations",
+        summary: "Managing complex, long-running multi-phase task sequences",
+        body: "\
+# Using Ralph: Multi-Phase Long-Running Tasks
+
+## What This Is
+
+Some work is too large for a single Ralph run. A feature that requires research,
+then scaffolding, then implementation, then verification is really 4 sequential
+Ralph runs — each with its own preset, prompt, and completion gate. This is the
+pattern for managing that work across sessions, days, and concurrent projects.
+
+## What to Expect
+
+Long-running multi-phase work has a different rhythm than a single run:
+
+- **Each phase is an independent Ralph run.** It starts clean, completes, and merges.
+  The next phase starts from the committed result of the previous one.
+- **Phases can take hours or be interrupted.** Use `ralph loops stop` for graceful
+  pause; `ralph run --continue` to resume. The loop re-reads scratchpad/tasks and
+  picks up where it left off.
+- **Parallel phases are possible** when they have no file overlap. Use separate
+  worktree loops (`ralph run` in a second terminal auto-creates one) and merge
+  after both complete.
+- **Context resets between phases.** Memories bridge the gap — add discoveries
+  from phase N before starting phase N+1:
+    ralph tools memory add \"content\" -t pattern
+
+## Track Progress: RALPH_PHASES.md
+
+For any task with 2+ phases, maintain a `prompts/RALPH_PHASES.md` file. This is
+your re-orientation point when returning after a gap or switching between projects.
+
+Minimal format:
+
+    # Project — Ralph Phases
+    Last updated: YYYY-MM-DD
+
+    ## Dependency Graph
+    ```mermaid
+    graph TD
+      A[01-research] --> B[02-scaffold]
+      B --> C[03-implement]
+      B --> D[03b-parallel-track]
+      C --> E[04-verify]
+      D --> E
+    ```
+
+    ## Phases
+    | Phase | Prompt File            | Status    | Preset       | Notes              |
+    |-------|------------------------|-----------|--------------|--------------------|
+    | 01    | 01-research.md         | ✓ done    | research     | merged 2026-02-14  |
+    | 02    | 02-scaffold.md         | ● running | code-assist  | loop: happy-falcon |
+    | 03    | 03-implement.md        | ○ pending | code-assist  | blocked by 02      |
+    | 03b   | 03b-parallel-track.md  | ○ pending | feature      | parallel-ok with 03|
+    | 04    | 04-verify.md           | ○ pending | bugfix       | blocked by 03+03b  |
+
+Status: ○ pending | ● running | ✓ done | ✗ failed | ⊘ skipped
+
+## What Files to Keep
+
+**Keep in the repo (commit these):**
+- `prompts/RALPH_PHASES.md` — your phase index, essential for re-orientation
+- `prompts/<phase>/*.md` — all phase prompt files
+- `.ralph/agent/memories.md` — persistent knowledge (survives `ralph clean`)
+- `.ralph/specs/` and `.ralph/tasks/` — specs and code tasks are project artifacts
+
+**Safe to clean (ephemeral, do not commit):**
+- `.ralph/agent/scratchpad.md`, `handoff.md`, `summary.md` — wiped by `ralph clean`
+- `.ralph/agent/tasks.jsonl` — runtime state for the current loop only
+- `.ralph/diagnostics/` — wipe with `ralph clean --diagnostics` after post-mortem
+- `.ralph/events-*.jsonl` — per-run event logs, ephemeral
+- `.ralph/loop.lock` — safe to delete if the process is dead
+- `.worktrees/` — cleaned by `ralph loops prune`
+
+**Rule of thumb:** If it lives under `.ralph/agent/` (except `memories.md`),
+it is ephemeral. If it lives in `prompts/` or `.ralph/specs/`, it is an artifact.
+
+## When It Is Safe to Clean
+
+    ralph clean                  # safe anytime: clears scratchpad/handoff/tasks
+    ralph clean --diagnostics    # safe after post-mortem: clears diagnostic logs
+    ralph loops prune            # safe when no loops are running: removes orphan worktrees
+
+Do NOT clean while a loop is running — you will corrupt its working state.
+Check first: `ralph loops list` and `pgrep -fa ralph`
+
+## Typical Phase Sequence
+
+    # Phase 01: research (read-only, short)
+    ralph run -c builtin:research -P prompts/myproject/01-research.md -a -b claude --max-iterations 20
+
+    # Phase 02: scaffold (after 01 merges)
+    ralph run -c builtin:code-assist -P prompts/myproject/02-scaffold.md -a -b claude --max-iterations 50
+
+    # Phase 03 + 03b in parallel (both depend only on 02):
+    ralph run -c builtin:code-assist -P prompts/myproject/03-implement.md -a -b claude &
+    ralph run -c builtin:feature -P prompts/myproject/03b-parallel-track.md -a -b claude &
+    wait
+    ralph loops list    # confirm both completed before starting phase 04
+
+    # Phase 04: verify (after 03 and 03b merge)
+    ralph run -c builtin:bugfix -P prompts/myproject/04-verify.md -a -b claude --max-iterations 30
+
+## Anti-Patterns
+- Don't put all phases in one prompt — a single giant prompt produces a single giant loop
+  that loses context and is unrecoverable if it stalls halfway through
+- Don't skip RALPH_PHASES.md for \"quick\" multi-phase work — you will lose track
+- Don't run phase N+1 before phase N's loop merges — you will have diverged state
+- Don't commit `.ralph/agent/` ephemeral files (scratchpad, handoff, tasks.jsonl)
+- Don't `ralph clean` while any loop is running",
+    },
+    HelpPrompt {
         name: "steering",
         category: "Operations",
         summary: "Course-correct a running Ralph loop",
@@ -2801,6 +2915,163 @@ Worktree Loops (.worktrees/<loop-id>/)
 - Don't run parallel loops that modify the same files — merge conflicts will block
 - Don't run more parallel loops than your machine can handle — each spawns an agent process
 - Don't skip the merge queue — let merge-ralph handle conflict resolution",
+    },
+    HelpPrompt {
+        name: "cc-to-ralph",
+        category: "Operations",
+        summary: "How Claude Code crafts Ralph orchestration runs",
+        body: "\
+# Using Ralph: CC-to-Ralph Handoff
+
+## What This Is
+When a user asks Claude Code to do project work in a Ralph-enabled repo, CC should
+NOT do the work itself. Instead, CC decomposes the request into Ralph runs, writes
+prompt files, selects presets, and builds a runscript. This prompt teaches that pattern
+through a concrete example.
+
+## The Decision: CC or Ralph?
+
+CC handles it directly when:
+- Quick one-liner fix (typo, single-line change)
+- Question about code (\"what does this function do?\")
+- Non-project work (\"write me a bash alias\")
+
+CC invokes Ralph when:
+- Multi-step implementation work
+- Anything requiring tests, review, or verification
+- Bug investigation and fix
+- Refactoring across files
+- Feature development of any size
+
+## The Handoff Pattern
+
+1. **Understand the scope** — break the user's request into discrete phases
+2. **Map each phase to a preset** — match the work type to a Ralph workflow
+3. **Write a prompt file per phase** — detailed, self-contained, fits one context window
+4. **Build a dependency graph** — which phases can run in parallel
+5. **Write a runscript** — shell script that executes the graph
+
+## Example: User Asks CC to Add Project Awareness to Ralph
+
+User prompt to CC:
+> \"I need all Ralph commands to support local and global scope. Loops, memory,
+> events, emit, clean — all of them. Also fix the workspace root bug and add
+> a known-projects registry.\"
+
+### Step 1: CC Decomposes into Phases
+
+| Phase | Work Type | Preset | Why This Preset |
+|-------|-----------|--------|-----------------|
+| 01 | Fix 4 bugs (workspace_root, loop age, failure display, worktree path) | bugfix | Scientific method: find, fix, verify |
+| 02 | New module (known_projects.rs) from scratch with tests | code-assist | TDD green-field implementation |
+| 03 | Fix shared corpora issues (tilde expansion, filters, docs) | bugfix | Known defects with clear reproduction |
+| 04 | Write 8 test scenarios for shared corpora | code-assist | Test-first development |
+| 05 | Add --global to loops list + cross-project ID routing | code-assist | New feature with tests |
+| 06 | Add --global to memory, events, emit, clean | code-assist | New feature with tests |
+| 07 | Integration tests (10 multi-project scenarios) | code-assist | Test-only phase |
+
+### Step 2: CC Builds the Dependency Graph
+
+```
+Phase 01 (foundation fixes)
+   |
+Phase 02 (known-projects registry)
+   |
+   +----------+
+   |          |
+Phase 03   Phase 05    <- independent branches, can run in parallel
+   |          |
+Phase 04   Phase 06
+   |          |
+   +----+-----+
+        |
+Phase 07 (integration tests)
+```
+
+### Step 3: CC Writes Prompt Files
+
+Each prompt file is a self-contained brief:
+- Problem statement (what and why)
+- Exact files to modify (with line numbers when known)
+- Implementation instructions (code snippets, API signatures)
+- Test requirements (specific assertions)
+- Verification steps (cargo build, cargo test, manual checks)
+
+Placed in `.ralph/prompts/`:
+```
+prompt-phase01-foundation-bugfixes.md
+prompt-phase02-known-projects.md
+prompt-phase03-corpora-hardening.md
+prompt-phase04-corpora-tests.md
+prompt-phase05-global-loops.md
+prompt-phase06-global-remaining.md
+prompt-phase07-integration-tests.md
+```
+
+### Step 4: CC Writes the Runscript
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+run_phase() {
+    local phase=\"$1\" preset=\"$2\" prompt=\"$3\"
+    ralph -c \"builtin:${preset}\" run \\
+        -b claude -P \"$prompt\" --max-iterations 50 -a
+    cargo build && cargo test  # verify after each phase
+}
+
+# Sequential foundation
+run_phase 1 bugfix   prompts/prompt-phase01-foundation-bugfixes.md
+run_phase 2 code-assist prompts/prompt-phase02-known-projects.md
+
+# Parallel branches (if RALPH_PARALLEL=true)
+run_phase 3 bugfix   prompts/prompt-phase03-corpora-hardening.md
+run_phase 4 code-assist prompts/prompt-phase04-corpora-tests.md
+run_phase 5 code-assist prompts/prompt-phase05-global-loops.md
+run_phase 6 code-assist prompts/prompt-phase06-global-remaining.md
+
+# Final convergence
+run_phase 7 code-assist prompts/prompt-phase07-integration-tests.md
+```
+
+## Key Principles
+
+1. **One phase = one context window.** If a prompt is too large for an agent to hold
+   in context, split it into two phases.
+2. **Each prompt is self-contained.** It includes all context the agent needs — it
+   cannot see prior phases' prompts or conversation history.
+3. **Preset matches work type.** Bug fixes use `bugfix` (reproduce-first). New code
+   uses `code-assist` (TDD). Reviews use `review` or `pr-review`. Research uses
+   `research`. Don't use `pdd-to-code-assist` for scoped implementation work.
+4. **Build + test after every phase.** If a phase breaks the build, stop immediately.
+   The next phase will fail harder if it starts from broken state.
+5. **Dependencies are explicit.** The runscript enforces the graph. Parallel phases
+   must have zero file overlap.
+6. **Memories bridge phases.** Add discoveries from phase N before starting N+1:
+   `ralph tools memory add \"pattern\" -t pattern --tags phase1`
+
+## Preset Selection Cheat Sheet
+
+| User Intent | Preset | When To Use |
+|-------------|--------|-------------|
+| \"Build X from scratch\" | pdd-to-code-assist | Greenfield, needs requirements/design |
+| \"Implement this spec\" | code-assist | Spec exists, need TDD implementation |
+| \"Add feature X\" | feature | Scoped addition with code review |
+| \"Fix this bug\" | bugfix | Reproduce → fix → verify |
+| \"Why is X broken\" | debug | Investigation, root cause analysis |
+| \"Refactor X\" | refactor | Safe incremental refactoring |
+| \"Review this code\" | review / pr-review | Read-only analysis |
+| \"Research X\" | research | Exploration, no code changes |
+| \"Write tests\" | code-assist | Test-focused TDD |
+| \"Write docs\" | docs | Documentation with review cycle |
+
+## Anti-Patterns
+- Don't put all phases in one giant prompt — it exceeds context and can't recover
+- Don't skip the runscript for \"just two phases\" — you'll forget the dependency order
+- Don't use `pdd-to-code-assist` for bug fixes — it's 9 hats of overhead for a fix
+- Don't let CC implement the work directly — if it's project work, Ralph handles it
+- Don't assume CC's conversation history transfers to Ralph — each run starts clean",
     },
     HelpPrompt {
         name: "memories",

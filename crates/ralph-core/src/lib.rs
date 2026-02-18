@@ -85,7 +85,8 @@ pub use loop_name::{LoopNameGenerator, LoopNamingConfig};
 pub use loop_registry::{LoopEntry, LoopRegistry, RegistryError};
 pub use memory::{Memory, MemoryType};
 pub use memory_store::{
-    DEFAULT_MEMORIES_PATH, MarkdownMemoryStore, format_memories_as_markdown, truncate_to_budget,
+    DEFAULT_MEMORIES_PATH, MarkdownMemoryStore, format_memories_as_markdown,
+    format_memories_as_markdown_labeled, truncate_to_budget,
 };
 pub use merge_queue::{
     MergeButtonState, MergeEntry, MergeEvent, MergeEventType, MergeOption, MergeQueue,

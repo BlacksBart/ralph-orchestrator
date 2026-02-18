@@ -15,7 +15,10 @@ use crate::hat_registry::HatRegistry;
 use crate::hatless_ralph::HatlessRalph;
 use crate::instructions::InstructionBuilder;
 use crate::loop_context::LoopContext;
-use crate::memory_store::{MarkdownMemoryStore, format_memories_as_markdown, truncate_to_budget};
+use crate::memory_store::{
+    MarkdownMemoryStore, format_memories_as_markdown, format_memories_as_markdown_labeled,
+    truncate_to_budget,
+};
 use crate::skill_registry::SkillRegistry;
 use crate::text::floor_char_boundary;
 use ralph_proto::{CheckinContext, Event, EventBus, Hat, HatId, RobotService};
@@ -987,6 +990,66 @@ impl EventLoop {
                 );
 
                 prefix.push_str(&memories_content);
+            }
+
+            // Inject shared corpora (read-only, remaining budget after local memories)
+            for shared_path in &memories_config.shared {
+                // Resolve relative paths against workspace root
+                let resolved = if shared_path.is_absolute() {
+                    shared_path.clone()
+                } else {
+                    workspace_root.join(shared_path)
+                };
+
+                // Expand ~ in paths
+                let resolved = if let Ok(stripped) = resolved.strip_prefix("~") {
+                    if let Some(home) = std::env::var_os("HOME") {
+                        std::path::PathBuf::from(home).join(stripped)
+                    } else {
+                        resolved
+                    }
+                } else {
+                    resolved
+                };
+
+                let shared_store = MarkdownMemoryStore::new(&resolved);
+                if !shared_store.exists() {
+                    debug!("Shared memory corpus not found, skipping: {:?}", resolved);
+                    continue;
+                }
+
+                let source_label = resolved
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("shared");
+
+                match shared_store.load() {
+                    Ok(shared_memories) if !shared_memories.is_empty() => {
+                        let mut shared_content =
+                            format_memories_as_markdown_labeled(&shared_memories, source_label);
+
+                        if memories_config.budget > 0 {
+                            shared_content =
+                                truncate_to_budget(&shared_content, memories_config.budget);
+                        }
+
+                        info!(
+                            "Injecting {} shared memories from {:?} ({} chars)",
+                            shared_memories.len(),
+                            resolved,
+                            shared_content.len()
+                        );
+
+                        prefix.push_str("\n\n");
+                        prefix.push_str(&shared_content);
+                    }
+                    Ok(_) => {
+                        debug!("Shared memory corpus is empty: {:?}", resolved);
+                    }
+                    Err(e) => {
+                        info!("Failed to load shared memory corpus {:?}: {}", resolved, e);
+                    }
+                }
             }
         }
 

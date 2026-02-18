@@ -319,6 +319,45 @@ pub fn format_memories_as_markdown(memories: &[Memory]) -> String {
     output
 }
 
+/// Formats memories as markdown with a source label in the header.
+///
+/// Used when injecting shared corpus memories so the agent can distinguish
+/// local memories from inherited ones. The source label appears in the
+/// heading, e.g. `# Memories [pfm-system]`.
+#[must_use]
+pub fn format_memories_as_markdown_labeled(memories: &[Memory], source: &str) -> String {
+    if memories.is_empty() {
+        return String::new();
+    }
+
+    let mut output = format!("# Memories [{}]\n", source);
+
+    for memory_type in MemoryType::all() {
+        let type_memories: Vec<_> = memories
+            .iter()
+            .filter(|m| m.memory_type == *memory_type)
+            .collect();
+
+        if type_memories.is_empty() {
+            continue;
+        }
+
+        output.push_str(&format!("\n## {}\n", memory_type.section_name()));
+
+        for memory in type_memories {
+            output.push_str(&format!(
+                "\n### {}\n> {}\n<!-- tags: {} | created: {} -->\n",
+                memory.id,
+                memory.content.replace('\n', "\n> "),
+                memory.tags.join(", "),
+                memory.created
+            ));
+        }
+    }
+
+    output
+}
+
 /// Truncates memory content to approximately fit within a token budget.
 ///
 /// Uses a simple heuristic of ~4 characters per token. Tries to end
