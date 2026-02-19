@@ -41,10 +41,28 @@ pub enum ToolsCommands {
 }
 
 /// Execute a tools command.
-pub async fn execute(args: ToolsArgs, use_colors: bool) -> Result<()> {
+///
+/// `workspace_root` is the resolved git root (from `find_workspace_root()`).
+/// It's injected into memory/task args when no explicit `--root` was provided,
+/// so the `PathBuf::from(".")` fallback is never reached from a subdirectory.
+pub async fn execute(
+    args: ToolsArgs,
+    use_colors: bool,
+    workspace_root: &std::path::Path,
+) -> Result<()> {
     match args.command {
-        ToolsCommands::Memory(memory_args) => memory::execute(memory_args, use_colors),
-        ToolsCommands::Task(task_args) => task_cli::execute(task_args, use_colors),
+        ToolsCommands::Memory(mut memory_args) => {
+            if memory_args.root.is_none() {
+                memory_args.root = Some(workspace_root.to_path_buf());
+            }
+            memory::execute(memory_args, use_colors)
+        }
+        ToolsCommands::Task(mut task_args) => {
+            if task_args.root.is_none() {
+                task_args.root = Some(workspace_root.to_path_buf());
+            }
+            task_cli::execute(task_args, use_colors)
+        }
         ToolsCommands::Skill(skill_args) => skill_cli::execute(skill_args),
         ToolsCommands::Interact(interact_args) => interact::execute(interact_args).await,
     }

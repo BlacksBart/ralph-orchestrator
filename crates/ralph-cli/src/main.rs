@@ -352,15 +352,29 @@ pub(crate) fn load_config_with_overrides(
 
     config.normalize();
 
-    // Set workspace_root to current directory
-    config.core.workspace_root =
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    // Set workspace_root to git root (or current directory as fallback)
+    config.core.workspace_root = find_workspace_root();
 
     // Apply CLI config overrides
     let override_sources: Vec<_> = overrides.into_iter().cloned().collect();
     apply_config_overrides(&mut config, &override_sources)?;
 
     Ok(config)
+}
+
+/// Walk up from CWD looking for `.git/` directory. Falls back to CWD if no `.git/` found.
+fn find_workspace_root() -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut current = cwd.as_path();
+    loop {
+        if current.join(".git").exists() {
+            return current.to_path_buf();
+        }
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => return cwd,
+        }
+    }
 }
 
 /// Ralph Orchestrator - Multi-agent orchestration framework
@@ -871,8 +885,14 @@ async fn main() -> Result<()> {
         Some(Commands::Plan(args)) => plan_command(&config_sources, cli.color, args),
         Some(Commands::CodeTask(args)) => code_task_command(&config_sources, cli.color, args),
         Some(Commands::Task(args)) => code_task_command(&config_sources, cli.color, args),
-        Some(Commands::Tools(args)) => tools::execute(args, cli.color.should_use_colors()).await,
-        Some(Commands::Loops(args)) => loops::execute(args, cli.color.should_use_colors()),
+        Some(Commands::Tools(args)) => {
+            let workspace_root = find_workspace_root();
+            tools::execute(args, cli.color.should_use_colors(), &workspace_root).await
+        }
+        Some(Commands::Loops(args)) => {
+            let workspace_root = find_workspace_root();
+            loops::execute(args, cli.color.should_use_colors(), &workspace_root)
+        }
         Some(Commands::Hats(args)) => {
             hats::execute(&config_sources, args, cli.color.should_use_colors())
         }
@@ -1142,11 +1162,10 @@ async fn run_command(
     // Normalize v1 flat fields into v2 nested structure
     config.normalize();
 
-    // Set workspace_root to current directory (critical for E2E tests in isolated workspaces).
+    // Set workspace_root to git root (critical for E2E tests in isolated workspaces).
     // This must happen after config load because workspace_root has #[serde(skip)] and
     // defaults to cwd at deserialize time - but we need it set to the actual runtime cwd.
-    config.core.workspace_root =
-        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    config.core.workspace_root = find_workspace_root();
 
     // Apply CLI config overrides (takes precedence over config file values)
     let override_sources: Vec<_> = overrides.into_iter().cloned().collect();
@@ -1811,7 +1830,7 @@ fn clean_command(
 
     // If --diagnostics flag is set, clean diagnostics directory
     if args.diagnostics {
-        let workspace_root = std::env::current_dir().context("Failed to get current directory")?;
+        let workspace_root = find_workspace_root();
         return ralph_cli::clean_diagnostics(&workspace_root, use_colors, args.dry_run);
     }
 
@@ -4225,5 +4244,67 @@ core:
         run_command(&[], false, ColorMode::Never, args)
             .await
             .expect("dry run should succeed");
+    }
+
+    /// Bug 1: load_config_with_overrides uses current_dir() instead of walking
+    /// up to the git root. When called from a subdirectory of a git repo, it
+    /// sets workspace_root to the subdirectory instead of the repo root.
+    #[test]
+    fn test_workspace_root_resolves_to_git_root_from_subdirectory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let git_root = temp_dir.path();
+
+        // Create a git repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(git_root)
+            .output()
+            .expect("git init");
+
+        // Create a subdirectory
+        let subdir = git_root.join("src").join("deep");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        // Set CWD to the subdirectory
+        let _cwd = CwdGuard::set(&subdir);
+
+        // Load config — this should resolve workspace_root to git root
+        let config = load_config_with_overrides(&[]).unwrap();
+
+        let expected_root = std::fs::canonicalize(git_root)
+            .unwrap_or_else(|_| git_root.to_path_buf());
+        let actual_root = std::fs::canonicalize(&config.core.workspace_root)
+            .unwrap_or_else(|_| config.core.workspace_root.clone());
+
+        assert_eq!(
+            actual_root, expected_root,
+            "workspace_root should be git root {:?}, but got {:?}",
+            expected_root, actual_root
+        );
+    }
+
+    /// Bug 1 (non-git fallback): When no `.git/` exists anywhere in the
+    /// ancestor chain, `find_workspace_root()` should fall back to CWD.
+    #[test]
+    fn test_workspace_root_falls_back_to_cwd_without_git() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        // No git init — this is a plain directory
+        let subdir = temp_dir.path().join("some").join("nested");
+        std::fs::create_dir_all(&subdir).unwrap();
+
+        let _cwd = CwdGuard::set(&subdir);
+
+        let root = find_workspace_root();
+
+        let expected = std::fs::canonicalize(&subdir)
+            .unwrap_or_else(|_| subdir.clone());
+        let actual = std::fs::canonicalize(&root)
+            .unwrap_or_else(|_| root.clone());
+
+        assert_eq!(
+            actual, expected,
+            "Without .git, workspace_root should be CWD {:?}, but got {:?}",
+            expected, actual
+        );
     }
 }
