@@ -221,6 +221,21 @@ impl PreflightCheck for TelegramTokenCheck {
     }
 }
 
+/// Returns true if the working tree has tracked changes (modified, staged, deleted).
+/// Ignores untracked files (`??`) — they don't affect Ralph's diffs or worktree branching.
+fn has_tracked_changes(root: &std::path::Path) -> Result<bool, String> {
+    let output = std::process::Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(root)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.lines().any(|l| !l.starts_with("??")))
+}
+
 struct GitCleanCheck;
 
 #[async_trait]
@@ -246,13 +261,13 @@ impl PreflightCheck for GitCleanCheck {
             }
         };
 
-        match git_ops::is_working_tree_clean(root) {
-            Ok(true) => CheckResult::pass(self.name(), format!("Working tree clean ({branch})")),
-            Ok(false) => CheckResult::warn(
+        match has_tracked_changes(root) {
+            Ok(true) => CheckResult::warn(
                 self.name(),
                 "Working tree has uncommitted changes",
                 "Commit or stash changes before running for clean diffs",
             ),
+            Ok(false) => CheckResult::pass(self.name(), format!("Working tree clean ({branch})")),
             Err(err) => {
                 CheckResult::fail(self.name(), "Unable to read git status", format!("{err}"))
             }
