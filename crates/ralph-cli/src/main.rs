@@ -450,6 +450,9 @@ enum Commands {
     /// Manage configured hats
     Hats(hats::HatsArgs),
 
+    /// List available built-in presets. Use -v for detailed view with hats and config.
+    Presets(PresetsArgs),
+
     /// Run the web dashboard
     Web(web::WebArgs),
 
@@ -684,6 +687,17 @@ struct TutorialArgs {
     no_input: bool,
 }
 
+/// Arguments for the presets subcommand.
+#[derive(Parser, Debug)]
+struct PresetsArgs {
+    /// Show detailed view with hats, completion promise, and config for each preset
+    #[arg(short, long)]
+    verbose: bool,
+
+    /// Show details for a specific preset only
+    preset: Option<String>,
+}
+
 /// Arguments for the help subcommand.
 #[derive(Parser, Debug)]
 struct HelpArgs {
@@ -754,13 +768,19 @@ struct CompletionsArgs {
     /// Shell to generate completions for
     #[arg(value_enum)]
     shell: clap_complete::Shell,
+
+    /// Override the binary name used in the completion script.
+    /// Useful when the binary is installed under a different name (e.g. ralph-dev).
+    /// Example: ralph-dev completions bash --name ralph-dev >> ~/.bashrc
+    #[arg(long, default_value = "ralph")]
+    name: String,
 }
 
 fn completions_command(args: CompletionsArgs) -> Result<()> {
     use clap_complete::generate;
 
     let mut cli = Cli::command();
-    generate(args.shell, &mut cli, "ralph", &mut std::io::stdout());
+    generate(args.shell, &mut cli, args.name, &mut std::io::stdout());
     Ok(())
 }
 
@@ -896,6 +916,7 @@ async fn main() -> Result<()> {
         Some(Commands::Hats(args)) => {
             hats::execute(&config_sources, args, cli.color.should_use_colors())
         }
+        Some(Commands::Presets(args)) => presets_command(cli.color, args),
         Some(Commands::Web(args)) => web::execute(args).await,
         Some(Commands::Bot(args)) => {
             bot::execute(args, &config_sources, cli.color.should_use_colors()).await
@@ -2131,6 +2152,7 @@ struct HelpTopic {
     name: &'static str,
     tagline: &'static str,
     why: &'static [&'static str],
+    how: &'static [&'static str],
     examples: &'static [&'static str],
 }
 
@@ -2144,6 +2166,17 @@ const HELP_TOPICS: &[HelpTopic] = &[
             "of concerns — the Builder never reviews its own code, the Reviewer never edits files.",
             "Each hat has its own system prompt, triggers (events it listens to), and outputs",
             "(events it publishes). This means hats compose like UNIX pipes.",
+        ],
+        how: &[
+            "1. Define hats in ralph.yml under the `hats:` key.",
+            "2. Each hat needs: triggers (events that activate it), publishes (events it",
+            "   can emit), and instructions (the system prompt for that role).",
+            "3. The event loop matches incoming events to hat triggers and runs the hat.",
+            "   The hat's output is parsed for <ralph:event> tags to advance the loop.",
+            "4. Start with a builtin preset (`ralph init --preset code-assist`) and",
+            "   customise hats iteratively — add instructions, tighten triggers.",
+            "5. Use `ralph hats graph` to visualise the event flow before running.",
+            "   A hat with no path to the completion event will cause a dead loop.",
         ],
         examples: &[
             "# Minimal 2-hat ralph.yml:",
@@ -2170,9 +2203,30 @@ const HELP_TOPICS: &[HelpTopic] = &[
             "battle-tested YAML files that encode proven patterns — like starter",
             "templates for orchestration. You pick one, customize it, and run.",
         ],
+        how: &[
+            "1. Browse available presets: `ralph presets` (summary) or `ralph presets -v`",
+            "   (full hat definitions, event flow, completion promise).",
+            "2. Pick the preset that matches your work type:",
+            "   bugfix → reproduce + fix + verify + commit",
+            "   code-assist → plan + build + validate + commit",
+            "   refactor → refactor + verify",
+            "   feature → build + review",
+            "   review / pr-review → read-only analysis",
+            "   research → information gathering (no file edits)",
+            "   spec-driven → spec + review + implement + verify",
+            "3. Run directly without a config file: `ralph run -c builtin:<name>`",
+            "4. Or generate a customisable ralph.yml: `ralph init --preset <name>`",
+            "   then edit the hats/instructions before running.",
+        ],
         examples: &[
             "# List available presets:",
-            "  ralph init --list-presets",
+            "  ralph presets",
+            "",
+            "# Show details for all presets (hats, config, event flow):",
+            "  ralph presets -v",
+            "",
+            "# Show details for a single preset:",
+            "  ralph presets bugfix",
             "",
             "# Generate config from a preset:",
             "  ralph init --preset bugfix",
@@ -2189,6 +2243,21 @@ const HELP_TOPICS: &[HelpTopic] = &[
             "learned last time. Memories persist knowledge across sessions: codebase patterns",
             "it discovered, decisions it made and why, fixes for problems that recur. Without",
             "memories, the agent re-discovers the same things every run.",
+        ],
+        how: &[
+            "Memories are stored in `.ralph/agent/memories.md` and injected at the start",
+            "of every loop iteration. The agent can read and write them via `ralph tools`.",
+            "",
+            "You can also add memories manually to steer future loops:",
+            "  - type `pattern`  — a recurring codebase convention",
+            "  - type `decision` — an architectural choice and its rationale",
+            "  - type `fix`      — a recurring problem and its solution",
+            "  - type `context`  — background the agent needs every run",
+            "",
+            "Memories are injected in full if they fit the token budget.",
+            "Use `ralph tools memory prime` to preview what will be injected.",
+            "Delete stale memories with `ralph tools memory delete <id>` to keep",
+            "the set lean — irrelevant memories waste tokens and add noise.",
         ],
         examples: &[
             "# Add a memory:",
@@ -2213,6 +2282,23 @@ const HELP_TOPICS: &[HelpTopic] = &[
             "means you can add, remove, or reorder hats without rewriting instructions.",
             "Events also give you a complete audit trail of what happened and when.",
         ],
+        how: &[
+            "Hats emit events by including XML tags in their output:",
+            "  <ralph:event topic=\"build.done\">tests pass, coverage 87%</ralph:event>",
+            "",
+            "The event loop parses agent output, extracts these tags, and routes them",
+            "to hats whose `triggers:` list matches the topic. Glob patterns work:",
+            "  triggers: [build.*, review.approved]",
+            "",
+            "Events are appended to a JSONL file (.ralph/events-<timestamp>.jsonl).",
+            "The current file is pointed to by .ralph/current-events.",
+            "",
+            "To manually inject an event into a running loop (e.g., to unblock it",
+            "or skip a step): `ralph emit <topic> [payload]`",
+            "",
+            "To inspect what happened: `ralph events` (last N events, formatted).",
+            "For raw JSONL: `tail -f $(cat .ralph/current-events)`",
+        ],
         examples: &[
             "# Emit an event manually:",
             "  ralph emit \"build.done\" \"tests pass\"",
@@ -2236,6 +2322,26 @@ const HELP_TOPICS: &[HelpTopic] = &[
             "context it doesn't have, or you need to stop it gracefully. Loop interaction",
             "gives you a control plane for a running process without killing and restarting it.",
         ],
+        how: &[
+            "Guidance injection (softest → hardest):",
+            "  1. TUI: press `:` to queue guidance for the next iteration boundary,",
+            "          or `!` to inject immediately as a human.guidance event.",
+            "  2. CLI: `ralph emit human.guidance \"<text>\"` — appends to events file.",
+            "  3. Telegram: send any plain-text message to the bot (see: ralph help -v bot).",
+            "",
+            "Stopping a loop:",
+            "  Graceful (`ralph loops stop`) — sets a stop-requested flag; the loop",
+            "  finishes the current iteration and exits cleanly.",
+            "  Force (`ralph loops stop --force`) — sends SIGKILL immediately.",
+            "  Resume later with `ralph run --continue`.",
+            "",
+            "Parallel loops run in git worktrees under .worktrees/<id>/.",
+            "  Launch a second loop while one is running — it auto-detects and spawns",
+            "  a worktree. Manage the lifecycle with `ralph loops <subcommand>`.",
+            "  When done: `ralph loops merge <id>` to bring changes into main.",
+            "  If it went wrong: `ralph loops discard <id>` to abandon.",
+            "  Crashed orphans: `ralph loops prune` to clean up all stale worktrees.",
+        ],
         examples: &[
             "# TUI guidance (while ralph is running in TUI mode):",
             "  Press : to queue guidance for the next iteration",
@@ -2245,20 +2351,271 @@ const HELP_TOPICS: &[HelpTopic] = &[
             "  ralph emit \"human.guidance\" \"focus on the API layer, skip the UI\"",
             "",
             "# Monitor loops:",
-            "  ralph loops list",
-            "  ralph loops logs <id> --follow",
+            "  ralph loops list           # active loops",
+            "  ralph loops list --all     # include merged/discarded",
+            "  ralph loops logs <id> -f   # follow output in real-time",
+            "  ralph loops diff <id>      # show loop's changes from merge-base",
             "",
             "# Graceful stop (terminates at next iteration boundary):",
-            "  ralph loops stop",
+            "  ralph loops stop           # stop primary loop",
+            "  ralph loops stop <id>      # stop a specific parallel loop",
             "",
             "# Resume after stop:",
             "  ralph run --continue",
             "",
-            "# Telegram (remote steering):",
-            "  Send messages to the bot; use /status, /stop, /tail",
+            "# Parallel loop lifecycle:",
+            "  ralph loops merge <id>     # merge completed loop to main branch",
+            "  ralph loops discard <id>   # abandon and clean up worktree",
+            "  ralph loops prune          # clean up all stale/crashed loops",
+            "  ralph loops attach <id>    # open shell in loop's worktree",
             "",
-            "# Parallel loops (worktree-isolated):",
-            "  ralph loops list --all",
+            "# Telegram (remote steering, requires RObot config):",
+            "  Send any plain text → injected as human.guidance event",
+            "  /status   — PID, elapsed time, iteration count, prompt preview",
+            "  /tasks    — open tasks from .ralph/agent/tasks.jsonl",
+            "  /memories — last 5 memories from .ralph/agent/memories.md",
+            "  /tail     — last 20 events from the events stream",
+            "  /restart  — restart loop at next iteration boundary",
+            "  /stop     — stop loop at next iteration boundary",
+            "  See: ralph help -v bot",
+        ],
+    },
+    HelpTopic {
+        name: "backend-flags",
+        tagline: "Claude Code flags passed through via -- (worktree, tmux, print, etc.)",
+        why: &[
+            "Ralph runs Claude Code (or another backend) under the hood. Flags after `--`",
+            "are forwarded directly to the backend command. This lets you combine Ralph's",
+            "orchestration (hats, events, backpressure) with Claude Code's session management",
+            "(worktrees, tmux, print mode, PR context, session forking).",
+            "",
+            "These flags are not Ralph flags — they belong to the Claude Code CLI.",
+            "Ralph just passes them through. Run `claude --help` for the full list.",
+        ],
+        how: &[
+            "Append `--` after all Ralph flags, then add Claude Code flags:",
+            "  ralph run -c builtin:feature -P prompt.md -a -b claude -- <claude-flags>",
+            "",
+            "The `--` separator is required. Flags before it are Ralph's; after it are",
+            "forwarded verbatim to the backend on every iteration.",
+            "",
+            "Common combinations:",
+            "  --worktree          isolate Claude's file changes in a git worktree",
+            "  --worktree --tmux   persist session in tmux (attach/detach remotely)",
+            "  --print             non-interactive stdout mode (CI, piping)",
+            "  --continue          resume an interrupted Claude session",
+            "  --fork-session      branch from a completed session at a mid-point",
+            "  --from-pr <n>       inject PR diff + comments as context",
+            "  --output-format=stream-json --include-partial-messages",
+            "                      stream token-level events for real-time dashboards",
+        ],
+        examples: &[
+            "# ── --worktree ──────────────────────────────────────────────────",
+            "# Creates a git worktree for the Claude session (separate from",
+            "# Ralph's own worktree system). Useful when you want Claude Code",
+            "# to isolate its file changes without affecting your working tree,",
+            "# or when running ad-hoc Claude sessions alongside a Ralph loop.",
+            "#",
+            "# Use case: Run a quick exploration in an isolated worktree while",
+            "# a Ralph loop is modifying the main repo.",
+            "",
+            "  ralph run -c builtin:research -P prompt.md -a -b claude -- --worktree",
+            "  ralph run -c builtin:feature -P prompt.md -a -b claude -- --worktree my-feature",
+            "",
+            "# Note: Ralph's parallel loops (ralph loops) already create worktrees",
+            "# automatically. Use Claude's --worktree for single-loop isolation.",
+            "",
+            "# ── --tmux ─────────────────────────────────────────────────────",
+            "# Spawns the Claude session inside a tmux session. Requires --worktree.",
+            "# Gives you a persistent terminal you can attach/detach from,",
+            "# which is ideal for long-running Ralph loops on a remote server.",
+            "#",
+            "# Use case: Start a multi-hour Ralph run on a server, detach,",
+            "# come back later and reattach to see progress.",
+            "",
+            "  ralph run -c builtin:code-assist -P prompt.md -a -b claude -- --worktree --tmux",
+            "",
+            "# Then from another terminal:",
+            "  tmux ls                  # list sessions",
+            "  tmux attach -t <name>    # reattach",
+            "",
+            "# ── --print / -p ──────────────────────────────────────────────",
+            "# Non-interactive mode: Claude prints its response and exits.",
+            "# No TUI, no streaming — just stdout. Perfect for piping Ralph's",
+            "# output into other tools, CI pipelines, or log files.",
+            "#",
+            "# Use case: Run Ralph in CI, capture output, parse results.",
+            "# Use case: Pipe a research run's output into jq or a summary tool.",
+            "",
+            "  ralph run -c builtin:research -p \"Analyze error handling\" -a -b claude -- --print",
+            "  ralph run -c builtin:review -P review-prompt.md -a -b claude -- --print > review.md",
+            "",
+            "# Note: Ralph's own -q/--quiet flag suppresses Ralph's streaming.",
+            "# Claude's --print suppresses Claude's interactive mode. Use both",
+            "# for fully silent pipeline operation:",
+            "  ralph run -c builtin:research -P prompt.md -a -q -b claude -- --print",
+            "",
+            "# ── --fork-session ─────────────────────────────────────────────",
+            "# When resuming a Claude session (--continue), --fork-session creates",
+            "# a new session ID instead of appending to the original. The new session",
+            "# starts with the full conversation history but diverges from that point.",
+            "#",
+            "# Use case: A Ralph loop completed but you want to try a different",
+            "# approach from a mid-point. Fork the session and re-run with a",
+            "# modified prompt, keeping the original session intact.",
+            "#",
+            "# Use case: Branch a completed review session to explore a finding",
+            "# deeper without modifying the original review record.",
+            "",
+            "  ralph run -c builtin:debug -P prompt.md -a -b claude -- --continue --fork-session",
+            "",
+            "# ── --from-pr ──────────────────────────────────────────────────",
+            "# Resumes a Claude session that was linked to a GitHub PR.",
+            "# Accepts a PR number or URL. The session gets the PR's diff,",
+            "# comments, and review context injected automatically.",
+            "#",
+            "# Use case: Run Ralph's pr-review preset against an actual PR,",
+            "# with Claude having full PR context (diff, comments, CI status).",
+            "#",
+            "# Use case: Resume a review session after the author pushed fixes.",
+            "",
+            "  ralph run -c builtin:pr-review -P review-prompt.md -a -b claude -- --from-pr 42",
+            "  ralph run -c builtin:pr-review -a -b claude -- --from-pr https://github.com/org/repo/pull/42",
+            "",
+            "# ── --include-partial-messages ──────────────────────────────────",
+            "# Streams partial message chunks as they arrive instead of waiting",
+            "# for complete messages. Only works with --print and",
+            "# --output-format=stream-json.",
+            "#",
+            "# Use case: Build a real-time dashboard that shows Ralph's progress",
+            "# as tokens stream in. Parse the JSONL stream for tool calls,",
+            "# text deltas, and completion events.",
+            "#",
+            "# Use case: Pipe into a monitoring tool that reacts to events",
+            "# (e.g., trigger alerts when backpressure rejects an event).",
+            "",
+            "  ralph run -c builtin:code-assist -P prompt.md -a -b claude -- \\",
+            "    --print --output-format=stream-json --include-partial-messages",
+            "",
+            "# Pipe into jq for real-time event filtering:",
+            "  ralph run -c builtin:code-assist -P prompt.md -a -b claude -- \\",
+            "    --print --output-format=stream-json --include-partial-messages \\",
+            "    | jq -c 'select(.type == \"tool_use\")'",
+        ],
+    },
+    HelpTopic {
+        name: "bot",
+        tagline: "Telegram bot for remote steering and human-in-the-loop",
+        why: &[
+            "The Telegram bot (RObot) gives you a control plane for running loops from",
+            "anywhere: your phone, a remote server, or while away from the terminal.",
+            "It has two modes:",
+            "",
+            "  Daemon mode (ralph bot daemon): a persistent process that accepts any",
+            "  plain-text message as a new loop prompt. Send a task, it starts a loop.",
+            "",
+            "  Loop mode (ralph run with RObot.enabled: true): the Telegram bot attaches",
+            "  to a running loop so you can query its state, inject guidance, answer",
+            "  questions the agent asks, or stop it — all via Telegram.",
+        ],
+        how: &[
+            "First-time setup (one per machine/project):",
+            "  1. Create a bot via @BotFather on Telegram → copy the token.",
+            "  2. Run `ralph bot onboard --telegram` — it validates the token,",
+            "     waits for you to send a message (to capture your chat_id),",
+            "     stores the token in the OS keychain, and writes ralph.yml.",
+            "  3. Verify with `ralph bot status` (checks token + chat_id + network).",
+            "  4. Confirm end-to-end with `ralph bot test`.",
+            "",
+            "Token storage priority (first found wins):",
+            "  RALPH_TELEGRAM_BOT_TOKEN env var → OS keychain → ralph.yml (legacy).",
+            "  Prefer keychain or env var — avoid committing tokens to ralph.yml.",
+            "",
+            "Enabling for loop mode: add to ralph.yml:",
+            "  RObot:",
+            "    enabled: true",
+            "    timeout_seconds: 300   # how long to block on human.interact",
+            "",
+            "Daemon mode: `ralph bot daemon` — runs as a foreground process.",
+            "  Any plain-text Telegram message starts a new loop.",
+            "  Only /status is available while idle.",
+            "  When a loop starts, the daemon hands off to the loop's TelegramService;",
+            "  all loop commands become available until the loop finishes.",
+        ],
+        examples: &[
+            "# ── Setup ──────────────────────────────────────────────────────",
+            "# First-time setup wizard (creates bot, detects chat_id, writes ralph.yml):",
+            "  ralph bot onboard --telegram",
+            "",
+            "# Check configuration status:",
+            "  ralph bot status",
+            "",
+            "# Send a test message to confirm the bot works:",
+            "  ralph bot test",
+            "  ralph bot test \"Custom message\"",
+            "",
+            "# Store token in OS keychain (preferred over ralph.yml):",
+            "  ralph bot token set <TOKEN>",
+            "",
+            "# ── Daemon mode ─────────────────────────────────────────────",
+            "# Start a persistent daemon. Any plain-text message starts a loop.",
+            "  ralph bot daemon",
+            "  ralph bot daemon -c ralph.yml     # explicit config",
+            "",
+            "# What to expect when it's working:",
+            "  → Bot sends \"Ralph daemon online\" on startup",
+            "  → Send any plain text: bot echoes \"Starting loop: <your text>\"",
+            "  → When loop finishes: bot sends \"Loop complete (...)\"",
+            "  → When loop fails: bot sends \"Loop failed: <error>\"",
+            "  → On shutdown (Ctrl-C / SIGTERM): bot sends \"Ralph daemon offline\"",
+            "",
+            "# Commands while daemon is idle:",
+            "  /status   — check if a loop is running or the daemon is idle",
+            "",
+            "# ── During a running loop (RObot.enabled: true in ralph.yml) ──",
+            "# Commands available in Telegram while a loop is running:",
+            "  /status   — PID, elapsed time, iteration count, prompt preview",
+            "  /tasks    — open and closed tasks from .ralph/agent/tasks.jsonl",
+            "  /memories — last 5 memories from .ralph/agent/memories.md",
+            "  /tail     — last 20 events from the events stream",
+            "  /restart  — request loop restart at next iteration boundary",
+            "  /stop     — request graceful loop stop at next iteration boundary",
+            "  /help     — list all bot commands",
+            "",
+            "# Any non-command message during a running loop is injected as guidance:",
+            "  \"focus on the API layer, skip the UI\"  →  human.guidance event",
+            "",
+            "# Reply to an agent question to answer it (human.response event):",
+            "  Agent: \"Should I use async or sync?\"",
+            "  You reply: \"async please\"  →  loop unblocks",
+            "",
+            "# Target a specific parallel loop with @loop-id prefix:",
+            "  @able-raven focus on error handling only",
+            "",
+            "# ── Diagnosing problems ─────────────────────────────────────",
+            "# Check bot config and token validity:",
+            "  ralph bot status",
+            "",
+            "# Verify bot can reach Telegram and send messages:",
+            "  ralph bot test",
+            "",
+            "# If the bot is silent, check:",
+            "  1. Token: is RALPH_TELEGRAM_BOT_TOKEN set, or keychain/ralph.yml configured?",
+            "     Run: ralph bot status",
+            "  2. chat_id: does .ralph/telegram-state.json exist with a valid chat_id?",
+            "     Run: cat .ralph/telegram-state.json",
+            "  3. RObot enabled: is RObot.enabled: true in ralph.yml?",
+            "     Run: grep -A3 RObot ralph.yml",
+            "  4. Network: can the process reach api.telegram.org?",
+            "     Run: curl https://api.telegram.org",
+            "  5. Diagnostics logs (loop mode):",
+            "     ls .ralph/diagnostics/logs/",
+            "     tail -f .ralph/diagnostics/logs/ralph-*.log",
+            "",
+            "# Token lookup order (first found wins):",
+            "  1. RALPH_TELEGRAM_BOT_TOKEN env var",
+            "  2. OS keychain (ralph/telegram-bot-token)",
+            "  3. ralph.yml → RObot.telegram.bot_token  (legacy, avoid committing)",
         ],
     },
 ];
@@ -3134,6 +3491,160 @@ prompts when enabled (default). Each memory has an ID like `mem-1737372000-a1b2`
     },
 ];
 
+fn presets_command(color_mode: ColorMode, args: PresetsArgs) -> Result<()> {
+    let use_colors = color_mode.should_use_colors();
+    let all_presets = presets::list_presets();
+
+    // Single preset detail mode
+    if let Some(name) = &args.preset {
+        let preset = presets::get_preset(name).ok_or_else(|| {
+            let available = presets::preset_names().join(", ");
+            anyhow::anyhow!("Unknown preset '{}'. Available: {}", name, available)
+        })?;
+        print_preset_detail(preset, use_colors)?;
+        return Ok(());
+    }
+
+    // Verbose: show all presets with details
+    if args.verbose {
+        for (i, preset) in all_presets.iter().enumerate() {
+            print_preset_detail(preset, use_colors)?;
+            if i + 1 < all_presets.len() {
+                println!();
+            }
+        }
+        return Ok(());
+    }
+
+    // Default: concise table
+    if use_colors {
+        println!(
+            "{}{}Available presets{} (ralph presets -v for details)\n",
+            colors::BOLD, colors::CYAN, colors::RESET
+        );
+    } else {
+        println!("Available presets (ralph presets -v for details)\n");
+    }
+
+    for preset in all_presets {
+        if use_colors {
+            println!(
+                "  {}{}{:<25}{}  {}",
+                colors::BOLD,
+                colors::GREEN,
+                preset.name,
+                colors::RESET,
+                preset.description
+            );
+        } else {
+            println!("  {:<25}  {}", preset.name, preset.description);
+        }
+    }
+
+    println!();
+    if use_colors {
+        println!(
+            "Usage: {}ralph run -c builtin:<preset>{} -P prompt.md -a -b claude",
+            colors::BOLD, colors::RESET
+        );
+        println!(
+            "       {}ralph presets <name>{}   — show details for one preset",
+            colors::BOLD, colors::RESET
+        );
+    } else {
+        println!("Usage: ralph run -c builtin:<preset> -P prompt.md -a -b claude");
+        println!("       ralph presets <name>   — show details for one preset");
+    }
+
+    Ok(())
+}
+
+fn print_preset_detail(preset: &presets::EmbeddedPreset, use_colors: bool) -> Result<()> {
+    use ralph_core::HatRegistry;
+
+    let config = RalphConfig::parse_yaml(preset.content)
+        .with_context(|| format!("Failed to parse preset '{}'", preset.name))?;
+
+    // Header
+    if use_colors {
+        println!(
+            "{}{}{}{} — {}",
+            colors::BOLD, colors::CYAN, preset.name, colors::RESET, preset.description
+        );
+    } else {
+        println!("{} — {}", preset.name, preset.description);
+    }
+
+    // Config summary
+    println!(
+        "  Completion: {:<24} Max iterations: {}",
+        config.event_loop.completion_promise, config.event_loop.max_iterations
+    );
+
+    if let Some(ref start) = config.event_loop.starting_event {
+        println!("  Starting event: {}", start);
+    }
+
+    if config.event_loop.max_runtime_seconds > 0 {
+        let hours = config.event_loop.max_runtime_seconds / 3600;
+        let mins = (config.event_loop.max_runtime_seconds % 3600) / 60;
+        if hours > 0 {
+            println!("  Max runtime: {}h {}m", hours, mins);
+        } else {
+            println!("  Max runtime: {}m", mins);
+        }
+    }
+
+    // Hats
+    if config.hats.is_empty() {
+        println!("  Hats: (none — hatless mode)");
+    } else {
+        let registry = HatRegistry::from_config(&config);
+        let mut hats: Vec<_> = registry.all().collect();
+        hats.sort_by(|a, b| a.name.cmp(&b.name));
+
+        println!("  Hats:");
+        for hat in &hats {
+            let triggers: Vec<_> = hat.subscriptions.iter().map(|t| t.as_str()).collect();
+            let publishes: Vec<_> = hat.publishes.iter().map(|t| t.as_str()).collect();
+
+            if use_colors {
+                println!(
+                    "    {}{}{:<20}{} {} → {}",
+                    colors::BOLD,
+                    colors::GREEN,
+                    hat.name,
+                    colors::RESET,
+                    triggers.join(", "),
+                    publishes.join(", ")
+                );
+            } else {
+                println!(
+                    "    {:<20} {} → {}",
+                    hat.name,
+                    triggers.join(", "),
+                    publishes.join(", ")
+                );
+            }
+        }
+    }
+
+    // Usage hint
+    if use_colors {
+        println!(
+            "  Run: {}ralph run -c builtin:{} -P prompt.md -a -b claude{}",
+            colors::DIM, preset.name, colors::RESET
+        );
+    } else {
+        println!(
+            "  Run: ralph run -c builtin:{} -P prompt.md -a -b claude",
+            preset.name
+        );
+    }
+
+    Ok(())
+}
+
 fn help_command(color_mode: ColorMode, args: HelpArgs) -> Result<()> {
     let use_colors = color_mode.should_use_colors();
 
@@ -3276,11 +3787,20 @@ fn print_help_concise(use_colors: bool) {
 
     let commands = [
         ("run", "Run the orchestration loop"),
+        ("presets", "List built-in presets (-v for details)"),
         ("init", "Initialize ralph.yml from a preset"),
         ("hats", "Manage and inspect configured hats"),
         ("events", "View event history"),
+        ("emit", "Emit an event into the current run"),
         ("loops", "Manage and monitor parallel loops"),
         ("tools", "Runtime tools (memory, task, skill)"),
+        ("bot", "Telegram bot setup, status, and daemon"),
+        ("plan", "Start a PDD planning session"),
+        ("code-task", "Generate code task files"),
+        ("web", "Run the web dashboard"),
+        ("clean", "Clean up Ralph artifacts"),
+        ("preflight", "Validate configuration and environment"),
+        ("completions", "Generate shell tab-completion scripts"),
         ("tutorial", "Interactive walkthrough"),
         ("doctor", "Environment diagnostics"),
     ];
@@ -3372,6 +3892,19 @@ fn print_help_topic(topic: &HelpTopic, use_colors: bool) {
         println!("  {}", line);
     }
     println!();
+
+    // How section
+    if !topic.how.is_empty() {
+        if use_colors {
+            println!("{}How:{}", colors::BOLD, colors::RESET);
+        } else {
+            println!("How:");
+        }
+        for line in topic.how {
+            println!("  {}", line);
+        }
+        println!();
+    }
 
     // Examples section
     if use_colors {

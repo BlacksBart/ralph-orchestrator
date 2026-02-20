@@ -75,7 +75,7 @@ hats:
   verifier:
     name: "Verifier"
     description: "Verifies refactoring preserved behavior via tests and checks."
-    triggers: ["refactor.done"]
+    triggers: ["refactor.done", "verify.failed"]
     publishes: ["verify.passed", "verify.failed"]
     default_publishes: "verify.passed"
     instructions: |
@@ -88,4 +88,24 @@ hats:
       2. `cargo clippy` — no new warnings
       3. `cargo check` — compiles cleanly
       4. Manual spot-check if tests are sparse
+
+      ### Event Format — Success
+
+      You MUST include ALL quality fields. Example:
+      ```bash
+      ralph emit "verify.passed" "quality.tests: pass
+      quality.lint: pass
+      quality.audit: pass
+      quality.coverage: 85%
+      quality.mutation: 75%
+      quality.complexity: 6"
+      ```
+
+      ### Event Format — Failure
+
+      ```bash
+      ralph emit "verify.failed" "quality.tests: fail
+      quality.lint: pass
+      reason: test_foo failed with assertion error"
+      ```
 
