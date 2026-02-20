@@ -654,6 +654,10 @@ struct CleanArgs {
     /// Clean diagnostic logs instead of .agent directory
     #[arg(long)]
     diagnostics: bool,
+
+    /// List each file as it is deleted
+    #[arg(long, short = 'v')]
+    verbose: bool,
 }
 
 /// Arguments for the emit subcommand.
@@ -1842,6 +1846,20 @@ fn events_command(color_mode: ColorMode, args: EventsArgs) -> Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+fn pid_alive(pid: u32) -> bool {
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+    kill(Pid::from_raw(pid as i32), None)
+        .map(|_| true)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn pid_alive(_pid: u32) -> bool {
+    true
+}
+
 fn clean_command(
     config_sources: &[ConfigSource],
     color_mode: ColorMode,
@@ -1854,6 +1872,8 @@ fn clean_command(
         let workspace_root = find_workspace_root();
         return ralph_cli::clean_diagnostics(&workspace_root, use_colors, args.dry_run);
     }
+
+    let verbose = args.verbose;
 
     // Load config with overrides applied
     let config = load_config_with_overrides(config_sources)?;
@@ -1886,46 +1906,67 @@ fn clean_command(
         return Ok(());
     }
 
-    // Dry run mode - list what would be deleted
     if args.dry_run {
         if use_colors {
             println!(
-                "{}Dry run mode:{} Would delete directory and all contents:",
+                "{}Dry run:{} Would delete:",
                 colors::CYAN,
                 colors::RESET
             );
         } else {
-            println!("Dry run mode: Would delete directory and all contents:");
+            println!("Dry run: Would delete:");
         }
-        println!("  {}", agent_dir.display());
-
-        // List directory contents
+        println!("  {}/", agent_dir.display());
         list_directory_contents(agent_dir, use_colors, 1)?;
-
-        return Ok(());
+    } else {
+        if verbose {
+            list_directory_contents(agent_dir, use_colors, 1)?;
+        }
+        fs::remove_dir_all(agent_dir).with_context(|| {
+            format!(
+                "Failed to delete directory '{}'. Check permissions and try again.",
+                agent_dir.display()
+            )
+        })?;
+        if use_colors {
+            println!(
+                "{}✓{} Cleaned: {}",
+                colors::GREEN,
+                colors::RESET,
+                agent_dir.display()
+            );
+        } else {
+            println!("Cleaned: {}", agent_dir.display());
+        }
     }
 
-    // Perform actual deletion
-    fs::remove_dir_all(agent_dir).with_context(|| {
-        format!(
-            "Failed to delete directory '{}'. Check permissions and try again.",
-            agent_dir.display()
-        )
-    })?;
+    // Handle stale loop lock
+    let workspace_root = config.core.workspace_root.clone();
+    let lock_path = workspace_root.join(ralph_core::loop_lock::LoopLock::LOCK_FILE);
+    if lock_path.exists() {
+        let is_stale = ralph_core::loop_lock::LoopLock::read_existing(&workspace_root)
+            .ok()
+            .flatten()
+            .map(|m| !pid_alive(m.pid))
+            .unwrap_or(false);
 
-    // Success message
-    if use_colors {
-        println!(
-            "{}✓{} Cleaned: Deleted '{}' and all contents",
-            colors::GREEN,
-            colors::RESET,
-            agent_dir.display()
-        );
-    } else {
-        println!(
-            "Cleaned: Deleted '{}' and all contents",
-            agent_dir.display()
-        );
+        if is_stale {
+            if args.dry_run {
+                println!("  {} (stale lock)", lock_path.display());
+            } else {
+                if let Err(err) = fs::remove_file(&lock_path) {
+                    eprintln!("Warning: could not remove stale lock: {err}");
+                } else if use_colors {
+                    println!(
+                        "{}✓{} Removed stale loop lock",
+                        colors::GREEN,
+                        colors::RESET
+                    );
+                } else {
+                    println!("Removed stale loop lock");
+                }
+            }
+        }
     }
 
     Ok(())

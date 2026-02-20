@@ -1,6 +1,8 @@
 //! Preflight checks for validating environment and configuration before running.
 
 use crate::config::ConfigWarning;
+use crate::loop_lock::LoopLock;
+use crate::loop_registry::LoopRegistry;
 use crate::{RalphConfig, git_ops};
 use async_trait::async_trait;
 use serde::Serialize;
@@ -111,6 +113,10 @@ impl PreflightRunner {
                 Box::new(PathsExistCheck),
                 Box::new(ToolsInPathCheck::default()),
                 Box::new(SpecCompletenessCheck),
+                Box::new(StaleLockCheck),
+                Box::new(RunningLoopCheck),
+                Box::new(StaleArtifactsCheck),
+                Box::new(OrphanWorktreesCheck),
             ],
         }
     }
@@ -284,37 +290,35 @@ impl PreflightCheck for PathsExistCheck {
     }
 
     async fn run(&self, config: &RalphConfig) -> CheckResult {
-        let mut created = Vec::new();
-
         let scratchpad_path = config.core.resolve_path(&config.core.scratchpad);
-        if let Some(parent) = scratchpad_path.parent()
-            && let Err(err) = ensure_directory(parent, &mut created)
-        {
-            return CheckResult::fail(
-                self.name(),
-                "Scratchpad path unavailable",
-                format!("{}", err),
-            );
+        let agent_dir = scratchpad_path.parent();
+
+        if let Some(dir) = agent_dir {
+            if !dir.exists() {
+                return CheckResult::warn(
+                    self.name(),
+                    "Agent directory missing",
+                    format!(
+                        "'{}' does not exist. It will be created on first run.",
+                        dir.display()
+                    ),
+                );
+            }
         }
 
         let specs_path = config.core.resolve_path(&config.core.specs_dir);
-        if let Err(err) = ensure_directory(&specs_path, &mut created) {
-            return CheckResult::fail(
+        if !specs_path.exists() {
+            return CheckResult::warn(
                 self.name(),
-                "Specs directory unavailable",
-                format!("{}", err),
+                "Specs directory missing",
+                format!(
+                    "'{}' does not exist. It will be created on first run.",
+                    specs_path.display()
+                ),
             );
         }
 
-        if created.is_empty() {
-            CheckResult::pass(self.name(), "Workspace paths accessible")
-        } else {
-            CheckResult::warn(
-                self.name(),
-                "Workspace paths created",
-                format!("Created: {}", created.join(", ")),
-            )
-        }
+        CheckResult::pass(self.name(), "Workspace paths accessible")
     }
 }
 
@@ -901,6 +905,208 @@ fn executable_extensions() -> Vec<OsString> {
 fn is_git_workspace(path: &Path) -> bool {
     let git_dir = path.join(".git");
     git_dir.is_dir() || git_dir.is_file()
+}
+
+/// Check for a stale loop lock (.ralph/loop.lock exists but PID is dead).
+struct StaleLockCheck;
+
+#[async_trait]
+impl PreflightCheck for StaleLockCheck {
+    fn name(&self) -> &'static str {
+        "stale-lock"
+    }
+
+    async fn run(&self, config: &RalphConfig) -> CheckResult {
+        let root = &config.core.workspace_root;
+        let lock_path = root.join(LoopLock::LOCK_FILE);
+
+        if !lock_path.exists() {
+            return CheckResult::pass(self.name(), "No loop lock present");
+        }
+
+        match LoopLock::read_existing(root) {
+            Ok(None) => CheckResult::pass(self.name(), "No loop lock present"),
+            Ok(Some(metadata)) => {
+                if is_pid_alive(metadata.pid) {
+                    // Lock is held by a live process — RunningLoopCheck will surface this
+                    CheckResult::pass(self.name(), format!("Loop lock held by live PID {}", metadata.pid))
+                } else {
+                    CheckResult::warn(
+                        self.name(),
+                        "Stale loop lock detected",
+                        format!(
+                            "PID {} is dead. Run `ralph clean` to remove .ralph/loop.lock",
+                            metadata.pid
+                        ),
+                    )
+                }
+            }
+            Err(err) => CheckResult::fail(
+                self.name(),
+                "Unable to read loop lock",
+                format!("{err}"),
+            ),
+        }
+    }
+}
+
+/// Check for a currently running Ralph loop in this project.
+struct RunningLoopCheck;
+
+#[async_trait]
+impl PreflightCheck for RunningLoopCheck {
+    fn name(&self) -> &'static str {
+        "running-loop"
+    }
+
+    async fn run(&self, config: &RalphConfig) -> CheckResult {
+        let root = &config.core.workspace_root;
+        let registry = LoopRegistry::new(root);
+
+        match registry.list() {
+            Ok(loops) if loops.is_empty() => {
+                CheckResult::pass(self.name(), "No active loops in this project")
+            }
+            Ok(loops) => {
+                let summaries: Vec<String> = loops
+                    .iter()
+                    .map(|l| format!("PID {} ({})", l.pid, l.id))
+                    .collect();
+                CheckResult::warn(
+                    self.name(),
+                    format!("{} active loop(s) in this project", loops.len()),
+                    format!(
+                        "Running: {}. New loop will spawn into a worktree.",
+                        summaries.join(", ")
+                    ),
+                )
+            }
+            Err(_) => {
+                // No registry file yet — nothing running
+                CheckResult::pass(self.name(), "No active loops in this project")
+            }
+        }
+    }
+}
+
+/// Check for stale Ralph artifacts (.ralph/agent/ leftover from a crashed session).
+struct StaleArtifactsCheck;
+
+#[async_trait]
+impl PreflightCheck for StaleArtifactsCheck {
+    fn name(&self) -> &'static str {
+        "stale-artifacts"
+    }
+
+    async fn run(&self, config: &RalphConfig) -> CheckResult {
+        let agent_dir = config.core.workspace_root.join(".ralph").join("agent");
+
+        if !agent_dir.exists() {
+            return CheckResult::pass(self.name(), "No agent artifacts present");
+        }
+
+        let stale: Vec<&str> = ["scratchpad.md", "handoff.md"]
+            .iter()
+            .copied()
+            .filter(|name| agent_dir.join(name).exists())
+            .collect();
+
+        if stale.is_empty() {
+            CheckResult::pass(self.name(), "No stale agent artifacts")
+        } else {
+            CheckResult::warn(
+                self.name(),
+                "Stale agent artifacts detected",
+                format!(
+                    "Found: {}. Run `ralph clean` to remove leftover session state.",
+                    stale.join(", ")
+                ),
+            )
+        }
+    }
+}
+
+/// Check for orphan worktrees (.worktrees/ dirs whose loops are no longer registered).
+struct OrphanWorktreesCheck;
+
+#[async_trait]
+impl PreflightCheck for OrphanWorktreesCheck {
+    fn name(&self) -> &'static str {
+        "orphan-worktrees"
+    }
+
+    async fn run(&self, config: &RalphConfig) -> CheckResult {
+        let root = &config.core.workspace_root;
+        let worktrees_dir = root.join(".worktrees");
+
+        if !worktrees_dir.exists() {
+            return CheckResult::pass(self.name(), "No worktrees directory");
+        }
+
+        let dirs: Vec<String> = match std::fs::read_dir(&worktrees_dir) {
+            Ok(entries) => entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .filter_map(|e| e.file_name().into_string().ok())
+                .collect(),
+            Err(err) => {
+                return CheckResult::fail(
+                    self.name(),
+                    "Unable to read worktrees directory",
+                    format!("{err}"),
+                );
+            }
+        };
+
+        if dirs.is_empty() {
+            return CheckResult::pass(self.name(), "No worktrees present");
+        }
+
+        let registry = LoopRegistry::new(root);
+        let active_ids: std::collections::HashSet<String> = registry
+            .list()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|l| l.id)
+            .collect();
+
+        let orphans: Vec<&str> = dirs
+            .iter()
+            .map(|d| d.as_str())
+            .filter(|d| !active_ids.contains(*d))
+            .collect();
+
+        if orphans.is_empty() {
+            CheckResult::pass(
+                self.name(),
+                format!("{} worktree(s) all accounted for", dirs.len()),
+            )
+        } else {
+            CheckResult::warn(
+                self.name(),
+                format!("{} orphan worktree(s) detected", orphans.len()),
+                format!(
+                    "Orphans: {}. Run `ralph loops prune` to clean up.",
+                    orphans.join(", ")
+                ),
+            )
+        }
+    }
+}
+
+/// Check if a process is alive by sending signal 0.
+#[cfg(unix)]
+fn is_pid_alive(pid: u32) -> bool {
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+    kill(Pid::from_raw(pid as i32), None)
+        .map(|_| true)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_pid_alive(_pid: u32) -> bool {
+    true
 }
 
 fn format_config_warnings(warnings: &[ConfigWarning]) -> String {
