@@ -49,8 +49,8 @@ pub enum LoopsCommands {
     /// Stop a running loop
     Stop(StopArgs),
 
-    /// Clean up stale loops (crashed processes)
-    Prune,
+    /// Clean up stale loops and orphan worktrees
+    Prune(PruneArgs),
 
     /// Open shell in loop's worktree
     Attach(AttachArgs),
@@ -103,6 +103,13 @@ pub struct HistoryArgs {
 pub struct RetryArgs {
     /// Loop ID
     pub loop_id: String,
+}
+
+#[derive(Parser, Debug)]
+pub struct PruneArgs {
+    /// Show what would be removed without actually removing
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Parser, Debug)]
@@ -178,7 +185,7 @@ pub fn execute(args: LoopsArgs, use_colors: bool, workspace_root: &Path) -> Resu
         Some(LoopsCommands::Retry(retry_args)) => retry_merge(retry_args, workspace_root),
         Some(LoopsCommands::Discard(discard_args)) => discard_loop(discard_args, workspace_root),
         Some(LoopsCommands::Stop(stop_args)) => stop_loop(stop_args, workspace_root),
-        Some(LoopsCommands::Prune) => prune_stale(workspace_root),
+        Some(LoopsCommands::Prune(args)) => prune_stale(args, workspace_root),
         Some(LoopsCommands::Attach(attach_args)) => attach_to_loop(attach_args, workspace_root),
         Some(LoopsCommands::Diff(diff_args)) => show_diff(diff_args, workspace_root),
         Some(LoopsCommands::Merge(merge_args)) => merge_loop(merge_args, workspace_root),
@@ -772,39 +779,53 @@ fn stop_loop(args: StopArgs, workspace_root: &Path) -> Result<()> {
 }
 
 /// Prune stale loops.
-fn prune_stale(workspace_root: &Path) -> Result<()> {
+fn prune_stale(args: PruneArgs, workspace_root: &Path) -> Result<()> {
     let registry = LoopRegistry::new(workspace_root);
 
-    let count = registry.clean_stale()?;
-
-    if count == 0 {
+    // Clean stale registry entries (dead PIDs)
+    let stale_count = registry.clean_stale()?;
+    if stale_count == 0 {
         println!("No stale loops found.");
     } else {
-        println!("Cleaned up {} stale loop(s).", count);
+        println!("Cleaned up {} stale loop(s).", stale_count);
     }
 
-    // Also check for orphan worktrees
+    // Find orphan worktrees (on-disk but not in registry)
     let worktrees = list_ralph_worktrees(workspace_root).unwrap_or_default();
     let loop_entries = registry.list().unwrap_or_default();
 
-    let mut orphan_count = 0;
-    for wt in worktrees {
-        if wt.branch.starts_with("ralph/") {
+    let orphans: Vec<_> = worktrees
+        .into_iter()
+        .filter(|wt| wt.branch.starts_with("ralph/"))
+        .filter(|wt| {
             let loop_id = wt.branch.trim_start_matches("ralph/");
-            let in_registry = loop_entries.iter().any(|e| e.id.contains(loop_id));
-            if !in_registry {
-                println!(
-                    "Found orphan worktree: {} (branch: {})",
-                    wt.path.display(),
-                    wt.branch
-                );
-                orphan_count += 1;
+            !loop_entries.iter().any(|e| e.id == loop_id)
+        })
+        .collect();
+
+    if orphans.is_empty() {
+        println!("No orphan worktrees found.");
+        return Ok(());
+    }
+
+    for wt in &orphans {
+        let loop_id = wt.branch.trim_start_matches("ralph/");
+        if args.dry_run {
+            println!("[dry-run] Would remove orphan: {} ({})", loop_id, wt.path.display());
+        } else {
+            println!("Removing orphan worktree: {} ({})", loop_id, wt.path.display());
+            if let Err(err) = remove_worktree(workspace_root, &wt.path) {
+                eprintln!("  Warning: failed to remove {}: {}", wt.path.display(), err);
+            } else {
+                println!("  Removed.");
             }
         }
     }
 
-    if orphan_count > 0 {
-        println!("\nTo remove orphan worktrees, use: ralph loops discard <id>");
+    if args.dry_run {
+        println!("\n{} orphan(s) found. Run without --dry-run to remove.", orphans.len());
+    } else {
+        println!("\nPruned {} orphan worktree(s).", orphans.len());
     }
 
     Ok(())

@@ -1403,13 +1403,34 @@ async fn run_command(
 
                 let worktree_config = WorktreeConfig::default();
 
-                // Generate memorable loop ID (adjective-noun only, no prompt keywords)
-                // This ID will be used consistently for: registry ID, worktree path, and branch name
+                // Generate loop ID from prompt filename slug if available, else memorable fallback.
+                // Strips leading "prompt-P<N>[variant]-" prefix so that e.g.
+                // "prompt-P1a-tracing-completion.md" → "tracing-completion-swift-falcon".
                 let name_generator =
                     ralph_core::LoopNameGenerator::from_config(&config.features.loop_naming);
-                let loop_id = name_generator.generate_memorable_unique(|name| {
-                    ralph_core::worktree_exists(workspace_root, name, &worktree_config)
-                });
+                let slug = {
+                    let pf = &config.event_loop.prompt_file;
+                    if pf.is_empty() {
+                        None
+                    } else {
+                        std::path::Path::new(pf.as_str())
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .map(|stem| {
+                                let re = regex::Regex::new(r"^prompt-[Pp]\d+[a-z]?-").unwrap();
+                                re.replace(stem, "").into_owned()
+                            })
+                            .filter(|s| !s.is_empty())
+                    }
+                };
+                let loop_id = match slug {
+                    Some(s) => name_generator.generate_unique(&s, |name| {
+                        ralph_core::worktree_exists(workspace_root, name, &worktree_config)
+                    }),
+                    None => name_generator.generate_memorable_unique(|name| {
+                        ralph_core::worktree_exists(workspace_root, name, &worktree_config)
+                    }),
+                };
 
                 // Ensure worktree directory is in .gitignore
                 ensure_gitignore(workspace_root, ".worktrees")
